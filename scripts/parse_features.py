@@ -6,8 +6,7 @@ import os
 import logging
 
 logging.basicConfig()
-logging.root.setLevel(logging.NOTSET)
-
+logging.root.setLevel(logging.INFO)
 
 rtab_file = 'data/gonno_unitigs/gonno.rtab'
 metadata_file = 'data/metadata.csv'
@@ -81,7 +80,7 @@ def split_training_and_testing(rtab_file, training_split = 0.7):
             logging.info(f'processing {j} of {num_unitigs} unitigs')
             j += 1
 
-            frequency = sum([int(i) for i in row[1:] if i == '1'])/len(row[1:])
+            frequency = sum([1 for i in row[1:] if i == '1'])/len(row[1:])
             if frequency < 0.01 or frequency > 0.99: continue #only include intermediate frequency unitigs
 
             training_rows[i] = row[:training_n + 1]
@@ -119,3 +118,21 @@ def load_labels(metadata_file, rtab_file):
     assert all([i.endswith('.contigs_velvet') for i in input_files])    
     accessions = [i.strip('.contigs_velvet') for i in input_files]
 
+    accessions = pd.Dataframe(accessions)
+    df = metadata_df.merge(accessions, 
+                        left_on = 'Sanger_lane', right_on = 0)
+    df = df.rename(columns = {0:'Filename'})
+    df['Filename'] = df['Filename'] + '.contigs_velvet'
+
+    diff = len(accessions) - len(df)
+    if diff > 0:
+        logging.warning(f'{diff} entries in {rtab_file} could not be mapped to entries in {metadata_file}')
+
+    return df
+
+if __name__ == '__main__':
+
+    training_rtab_file,testing_rtab_file = split_training_and_testing(rtab_file)
+
+    training_features = load_features(training_rtab_file)
+    testing_features = load_features(testing_rtab_file)
