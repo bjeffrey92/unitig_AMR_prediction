@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import os
 import logging
-from tqdm import tqdm
+import sys
 from itertools import compress
 
 logging.basicConfig()
@@ -28,13 +28,16 @@ def load_features(rtab_file):
 
         i = 0
         for row in reader:
-            for j in tqdm(range(1, len(row))): #first element of row is unitig number
+            for j in range(1, len(row)): #first element of row is unitig number
                 if row[j] == '1':
                     x_idx.append(j - 1)
                     y_idx.append(i)
                     values.append(1)
             i += 1
-            logging.info(f'{i}/{num_unitigs} unitigs processed')
+            sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
+            sys.stdout.flush()
+        sys.stdout.write('')
+        sys.stdout.flush()
 
     indices = torch.LongTensor([x_idx, y_idx])
     
@@ -81,7 +84,8 @@ def split_training_and_testing(rtab_file,
         i = 1
         j = 1
         for row in reader:
-            logging.info(f'processing {j} of {num_unitigs} unitigs')
+            sys.stdout.write(f'processing {j} of {num_unitigs} unitigs')
+            sys.stdout.flush()
             row = list(compress(row, filt))
             j += 1
 

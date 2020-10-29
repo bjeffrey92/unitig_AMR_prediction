@@ -93,11 +93,11 @@ if __name__ == '__main__':
     #fill in sparse matrix
     unitig_order = list(unitig_adjacency.keys())
     for unitig, neighbours in unitig_adjacency.items():
+        unitig_pos = unitig_order.index(unitig)
         for nbr in neighbours:
-            unitig_pos = unitig_order.index(unitig)
             nbr_pos = unitig_order.index(nbr)
             adj_matrix[unitig_pos, nbr_pos] = 1
             adj_matrix[nbr_pos, unitig_pos] = 1 
 
-    logging.info('Converting adjacency matrix to sparse ten')
+    logging.info('Converting adjacency matrix to sparse tensor')
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
