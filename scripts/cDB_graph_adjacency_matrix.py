@@ -53,11 +53,12 @@ if __name__ == '__main__':
     unitigs_fasta = 'data/gonno_unitigs/gonno_unitigs_unitigs.fasta'
     rtab_file = 'data/gonno_unitigs/gonno.rtab' #to filter unitigs based on frequency
     metadata_file = 'data/metadata.csv'
+    outcome_column = 'log2_cip_mic'
 
     g = pyfrost.load(gfa_file) #path to bfg_colours file is inferred
 
     #applies frequency filter to unitigs
-    metadata = parse_metadata(metadata_file, rtab_file) #to know which files to include
+    metadata = parse_metadata(metadata_file, rtab_file, outcome_column) #to know which files to include
     intermediate_unitigs = filter_unitigs(rtab_file, metadata.index) 
 
     logging.info('Identifying intermediate frequency nodes and mapping them to uuids, this could take a while')

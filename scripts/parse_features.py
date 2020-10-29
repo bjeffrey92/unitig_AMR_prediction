@@ -84,7 +84,7 @@ def split_training_and_testing(rtab_file,
         i = 1
         j = 1
         for row in reader:
-            sys.stdout.write(f'processing {j} of {num_unitigs} unitigs')
+            sys.stdout.write(f'\rprocessing {j} of {num_unitigs} unitigs')
             sys.stdout.flush()
             row = list(compress(row, filt))
             j += 1
@@ -96,6 +96,8 @@ def split_training_and_testing(rtab_file,
             testing_rows[i] = row[:1] + row[training_n + 1:]
             
             i += 1
+        sys.stdout.write('')
+        sys.stdout.flush()
 
     training_data_file = os.path.join(os.path.dirname(rtab_file), 
                             'training_data_' + os.path.basename(rtab_file))
@@ -117,8 +119,11 @@ def split_training_and_testing(rtab_file,
     return training_data_file, testing_data_file
 
 
-def parse_metadata(metadata_file, rtab_file):
+def parse_metadata(metadata_file, rtab_file, outcome_column):
     metadata_df = pd.read_csv(metadata_file)
+
+    #drop everything without measurement for outcome
+    metadata_df = metadata_df.loc[~metadata_df[outcome_column].isna()] 
 
     with open(rtab_file, 'r') as a:
         reader = csv.reader(a, delimiter = '\t')
@@ -159,9 +164,10 @@ if __name__ == '__main__':
 
     rtab_file = 'data/gonno_unitigs/gonno.rtab'
     metadata_file = 'data/metadata.csv'
+    outcome_column = 'log2_cip_mic'
 
     #maps entries in rtab to metadata
-    metadata = parse_metadata(metadata_file, rtab_file)
+    metadata = parse_metadata(metadata_file, rtab_file, outcome_column)
 
     training_rtab_file, testing_rtab_file = \
                 split_training_and_testing(rtab_file, metadata.index)
@@ -171,5 +177,5 @@ if __name__ == '__main__':
     testing_features = load_features(testing_rtab_file)
 
     #parse training and testing labels as tensors
-    training_labels = load_labels(metadata, 'log2_cip_mic', training_rtab_file)
-    testing_labels = load_labels(metadata, 'log2_cip_mic', testing_rtab_file)
+    training_labels = load_labels(metadata, outcome_column, training_rtab_file)
+    testing_labels = load_labels(metadata, outcome_column, testing_rtab_file)
