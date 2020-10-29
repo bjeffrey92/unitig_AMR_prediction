@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import os
 import logging
+from tqdm import tqdm
 from itertools import compress
 
 logging.basicConfig()
@@ -27,13 +28,13 @@ def load_features(rtab_file):
 
         i = 0
         for row in reader:
-            for j in range(1, len(row)): #first element of row is unitig number
+            for j in tqdm(range(1, len(row))): #first element of row is unitig number
                 if row[j] == '1':
                     x_idx.append(j - 1)
                     y_idx.append(i)
                     values.append(1)
-            logging.info(f'{i}/{num_unitigs} unitigs processed')
             i += 1
+            logging.info(f'{i}/{num_unitigs} unitigs processed')
 
     indices = torch.LongTensor([x_idx, y_idx])
     
