@@ -5,6 +5,7 @@ import csv
 from scipy import sparse 
 from itertools import compress
 from scripts.parse_features import parse_metadata
+import sys
 import logging
 
 logging.basicConfig()
@@ -21,17 +22,24 @@ def map_nodes(node_list, nodes_dict):
 
 def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
 
+    num_unitigs = sum(1 for line in open(rtab_file)) - 1
+
     with open(rtab_file, 'r') as a:
         reader = csv.reader(a, delimiter = '\t')
         header = next(reader)
         file_filter = [i in files_to_include for i in header] #which to include
         intermediate_unitigs = []
+        i = 1
         for row in reader:
+            sys.stdout.write(f'\rprocessing {j} of {num_unitigs} unitigs')
+            sys.stdout.flush()
             pattern_id = row[0]
             row = list(compress(row, file_filter))
             frequency = sum([1 for i in row if i == '1'])/len(row)
             if frequency >= filt[0] and frequency <= filt[1]:
                 intermediate_unitigs.append(pattern_id)
+        sys.stdout.write('')
+        sys.stdout.flush()
 
     return intermediate_unitigs
 
