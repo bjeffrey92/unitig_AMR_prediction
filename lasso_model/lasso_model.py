@@ -8,6 +8,8 @@ from numpy import linspace
 
 from lasso_model.utils import load_training_data, load_testing_data, accuracy
 
+import pickle
+import os 
 import logging
 import warnings
 
@@ -57,25 +59,40 @@ def CV(training_features, training_labels,
     return accuracy_dict
 
 
+def save_output(accuracy_dict, fname):
+    with open(fname, 'wb') as a:
+        pickle.dump(accuracy_dict, fname)
+
+
 def plot_results(accuracy_dict, fname):
 
     training_acc = [i[0] for i in accuracy_dict.values()]
     testing_acc = [i[1] for i in accuracy_dict.values()]
+
+    plt.clf()
 
     plt.scatter(list(accuracy_dict.keys()), training_acc)
     plt.scatter(list(accuracy_dict.keys()), testing_acc)
 
     plt.savefig(fname)
 
+
 if __name__ == '__main__':
-    data_dir = 'model_inputs/dev_set'
+    root_dir = 'model_inputs/freq_1_99/'
 
-    training_features, training_labels = load_training_data(data_dir)
-    testing_features, testing_labels = load_testing_data(data_dir)
+    outcomes = os.listdir(root_dir)
+    for outcome in outcomes:
+        data_dir = os.path.join(root_dir, outcome)
 
-    alphas = linspace(0.01, 0.1, 10)
+        training_features, training_labels = load_training_data(data_dir)
+        testing_features, testing_labels = load_testing_data(data_dir)
 
-    accuracy_dict = CV(training_features, training_labels, 
-                testing_features, testing_labels, alphas)
+        alphas = linspace(0.01, 0.1, 10)
 
-    plot_results(accuracy_dict, fname)
+        accuracy_dict = CV(training_features, training_labels, 
+                    testing_features, testing_labels, alphas)
+
+        fname = outcome + '_lasso_predictions.pkl'
+        plot_results(accuracy_dict, fname)
+
+        # plot_results(accuracy_dict, fname)
