@@ -1,28 +1,41 @@
+import math
 import torch
-from torch_geometric.nn import MessagePassing
-from torch_geometric.utils import add_self_loops, degree
+from torch.nn.parameter import Parameter
+from torch.nn.modules.module import Module
 
-class GCNConv(MessagePassing):
-    def __init__(self, in_channels, out_channels):
-        super(GCNConv, self).__init__(aggr = 'add')  
-        self.lin = torch.nn.Linear(in_channels, out_channels)
+class GraphConvolution(Module):
 
-    def forward(self, x, edge_index):
-        # x has shape [N, in_channels]
-        # edge_index has shape [2, E]
+    def __init__(self, in_features, out_features):
+        super(GraphConvolution, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.lin = torch.nn.Linear(in_features, out_features) #encodes weights and bias
 
-        x = self.lin(x)
+    def forward(self, layer_input, adj):
+        x = self.lin(layer_input) #Y = WX^T + B
+        output = torch.sparse.mm(adj, x) 
+        return output 
 
-        # Normalization.
-        row, col = edge_index
-        print(row)
-        print(col)
-        deg = degree(col, x.size(0), dtype = x.dtype)
-        deg_inv_sqrt = deg.pow(-0.5)
-        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.in_features) + ' -> ' \
+               + str(self.out_features) + ')'
 
-        return self.propagate(edge_index, x = x, norm = norm)
 
-    def message(self, x_j, norm):
-        # x_j has shape [E, out_channels]
-        return norm.view(-1, 1) * x_j
+class GraphConvolutionPerNode(Module):
+
+    def __init__(self, in_features, out_features):
+        super(GraphConvolution, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.lin = torch.nn.Linear(in_features, out_features) #encodes weights and bias
+
+    def forward(self, layer_input, adj):
+        x = torch.sparse.mm(adj, layer_input).transpose(0,1) #more efficient than storing dense matrix in memory
+        output = self.lin(x) #Y = WX^T + B
+        return output 
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.in_features) + ' -> ' \
+               + str(self.out_features) + ')'
