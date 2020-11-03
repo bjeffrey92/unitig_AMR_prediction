@@ -61,7 +61,7 @@ def CV(training_features, training_labels,
 
 def save_output(accuracy_dict, fname):
     with open(fname, 'wb') as a:
-        pickle.dump(accuracy_dict, fname)
+        pickle.dump(accuracy_dict, a)
 
 
 def plot_results(accuracy_dict, fname):
@@ -93,6 +93,6 @@ if __name__ == '__main__':
                     testing_features, testing_labels, alphas)
 
         fname = outcome + '_lasso_predictions.pkl'
-        plot_results(accuracy_dict, fname)
+        save_output(accuracy_dict, fname)
 
         # plot_results(accuracy_dict, fname)
