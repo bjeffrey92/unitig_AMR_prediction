@@ -1,12 +1,15 @@
+import sys
+import logging
+import csv
+from itertools import compress
+
 import pyfrost #https://github.com/broadinstitute/pyfrost
 import torch
 import numpy as np
-import csv
+from torch_sparse import SparseTensor
 from scipy import sparse 
-from itertools import compress
+
 from scripts.parse_features import parse_metadata
-import sys
-import logging
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -31,7 +34,7 @@ def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
         intermediate_unitigs = []
         i = 1
         for row in reader:
-            sys.stdout.write(f'\rprocessing {j} of {num_unitigs} unitigs')
+            sys.stdout.write(f'\rprocessing {i} of {num_unitigs} unitigs')
             sys.stdout.flush()
             pattern_id = row[0]
             row = list(compress(row, file_filter))
@@ -40,19 +43,28 @@ def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
                 intermediate_unitigs.append(pattern_id)
         sys.stdout.write('')
         sys.stdout.flush()
-
+    
     return intermediate_unitigs
 
 
 def convert_to_tensor(adj_matrix):
-    values = adj_matrix.data
-    indices = np.vstack((adj_matrix.row, adj_matrix.col))
-
-    i = torch.LongTensor(indices)
-    v = torch.FloatTensor(values)
+    
     shape = adj_matrix.shape
+    
+    row = torch.LongTensor(adj_matrix.row)
+    col = torch.LongTensor(adj_matrix.col)
+    value = torch.Tensor(adj_matrix.data)
+    
+    return SparseTensor(row = row, col = col, 
+                        value = value, sparse_sizes = shape)
 
-    return torch.sparse_coo_tensor(i, v, torch.Size(shape))
+    # values = adj_matrix.data
+    # indices = np.vstack((adj_matrix.row, adj_matrix.col))
+
+    # i = torch.LongTensor(indices)
+    # v = torch.FloatTensor(values)
+
+    # return torch.sparse_coo_tensor(i, v, torch.Size(shape))
 
 
 if __name__ == '__main__':
