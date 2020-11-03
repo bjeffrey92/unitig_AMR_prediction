@@ -1,6 +1,5 @@
 import torch
 import os
-import pandas as pd
 
 def load_training_data(data_dir, to_dense = True):
     features = torch.load(os.path.join(data_dir, 'training_features.pt'))
@@ -21,9 +20,7 @@ def load_adjacency_matrix(data_dir):
     return adj
 
 def write_epoch_results(epoch, epoch_results, summary_file):
-    
-    #write headers 
-    if sum(1 for l in open(summary_file)) == 0:
+    if not os.path.isfile(summary_file):
         with open(summary_file, 'w') as a:
             a.write('epoch\ttraining_data_loss\ttraining_data_acc\ttesting_data_loss\ttesting_data_loss\n')
 
@@ -43,10 +40,16 @@ class DataGenerator():
     def __init__(self, features, labels):
         assert len(features) == len(labels), \
             'Features and labels are of different length'
-        self.features = features
+        self.features = self._parse_features(features)
         self.labels = torch.FloatTensor(labels)
         self.samples = len(labels)
         self.n = 0
+
+    def _parse_features(self, features):
+        l = [None] * len(features)
+        for i in range(len(features)):
+            l[i] = features[i].unsqueeze(1)
+        return l
 
     def _iterate_features(self):
         self.n += 1

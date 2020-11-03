@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from GNN_model.utils import load_training_data, load_testing_data, \
-                         load_adjacency_matrix, save_outputs, accuracy,\
+                         load_adjacency_matrix, save_model, accuracy,\
                          write_epoch_results, DataGenerator
 from GNN_model.models import GCN
 
@@ -19,17 +19,20 @@ logging.root.setLevel(logging.INFO)
 
 
 def epoch_(model, data, adj):
-    output = [None] * data.samples
+    data.reset_generator()
+    
+    outputs = [None] * data.samples
     for i in range(data.samples):
         features = data.next_features()
-        output[i] = model(features, adj)
+        outputs[i] = model(features, adj).unsqueeze(0)
 
-    return torch.FloatTensor(output)
+    output_tensor = torch.cat(outputs, dim = 0)
+    return output_tensor
 
 
-def train(data, model, optimizer, adj, epoch, loss_function, testing_data = None):
+def train(data, model, optimizer, adj, epoch, 
+        loss_function, testing_data = None):
     t = time.time()
-    data.reset_generator()
     model.train()
     optimizer.zero_grad()
     
@@ -49,13 +52,13 @@ def train(data, model, optimizer, adj, epoch, loss_function, testing_data = None
 
     logging.info(f'Epoch {epoch} complete\n' + \
                 f'\tTime taken = {time.time() - t}\n' + \
-                f'\t Training Data Loss = {loss_train}\n' + \
-                f'\t Training Data Accuracy = {acc_train}\n'
-                f'\t Testing Data Loss = {loss_test}\n' + \
-                f'\t Testing Data Accuracy = {acc_test}\n'
+                f'\tTraining Data Loss = {loss_train}\n' + \
+                f'\tTraining Data Accuracy = {acc_train}\n'
+                f'\tTesting Data Loss = {loss_test}\n' + \
+                f'\tTesting Data Accuracy = {acc_test}\n'
                 )
 
-    return model, (loss_train, acc_train, loss_test, acc_test)
+    return model, (float(loss_train), acc_train, float(loss_test), acc_test)
 
 
 def test(data, model, adj, loss_function):
@@ -97,15 +100,15 @@ def main(args):
     adj = load_adjacency_matrix(args.data_dir)
     training_features, training_labels = load_training_data(args.data_dir)
     testing_features, testing_labels = load_testing_data(args.data_dir)
+    assert training_features.shape[1] == testing_features.shape[1], \
+        'Dimensions of training and testing data not equal'
+    
     training_data = DataGenerator(training_features, training_labels)
     testing_data = DataGenerator(testing_features, testing_labels)
 
-    assert training_features.shape[1] == testing_features.shape[1], \
-        'Dimensions of training and testing data not equal'
-
     model = GCN(n_feat = 1,
                 n_hid_1 = 4,
-                n_hi_2 = 8,
+                n_hid_2 = 8,
                 out_dim = 1,
                 dropout = args.dropout)
     optimizer = optim.Adam(model.parameters(), lr = args.lr, 
@@ -116,7 +119,7 @@ def main(args):
     for epoch in range(args.epoch):
         epoch += 1
         model, epoch_results = train(training_data, model, optimizer, 
-                                    adj, epoch, loss_function)
+                                    adj, epoch, loss_function, testing_data)
         write_epoch_results(epoch, epoch_results, args.summary_file)
     logging.info(f'Model Fitting Complete. Time elapsed {start_time - time.time()}')
 
