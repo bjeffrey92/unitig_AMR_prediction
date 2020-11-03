@@ -5,11 +5,12 @@ import time
 import logging
 
 import torch
-import torch.nn.functional as F
+import torch.nn as nn
 import torch.optim as optim
 
 from GNN_model.utils import load_training_data, load_testing_data, \
-                         load_adjacency_matrix, save_outputs, accuracy
+                         load_adjacency_matrix, save_outputs, accuracy,\
+                         write_epoch_results, DataGenerator
 from GNN_model.models import GCN
 
 
@@ -17,32 +18,58 @@ logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
 
-def train(epoch, features, labels):
+def epoch_(model, data, adj):
+    output = [None] * data.samples
+    for i in range(data.samples):
+        features = data.next_features()
+        output[i] = model(features, adj)
+
+    return torch.FloatTensor(output)
+
+
+def train(data, model, optimizer, adj, epoch, loss_function, testing_data = None):
     t = time.time()
+    data.reset_generator()
     model.train()
     optimizer.zero_grad()
-    output = model(features, adj)
-    loss_train = F.nll_loss(features, labels)
-    acc_train = accuracy(features, labels)
+    
+    output = epoch_(model, data, adj)
+    loss_train = loss_function(output, data.labels)
+    acc_train = accuracy(output, data.labels)
+    
+    if testing_data:
+        loss_test, acc_test = test(testing_data, model, adj, loss_function)
+    else:
+        loss_test = 'N/A'
+        acc_test = 'N/A'
+    
     loss_train.backward()
     optimizer.step()
 
-    loss_val = F.nll_loss(output[idx_val], labels[idx_val])
-    acc_val = accuracy(output[idx_val], labels[idx_val])
-    logging.info('Epoch: {:04d}'.format(epoch+1),
-                'loss_train: {:.4f}'.format(loss_train.item()),
-                'acc_train: {:.4f}'.format(acc_train.item()),
-                'loss_val: {:.4f}'.format(loss_val.item()),
-                'acc_val: {:.4f}'.format(acc_val.item()),
-                'time: {:.4f}s'.format(time.time() - t))
+
+    logging.info(f'Epoch {epoch} complete\n' + \
+                f'\tTime taken = {time.time() - t}\n' + \
+                f'\t Training Data Loss = {loss_train}\n' + \
+                f'\t Training Data Accuracy = {acc_train}\n'
+                f'\t Testing Data Loss = {loss_test}\n' + \
+                f'\t Testing Data Accuracy = {acc_test}\n'
+                )
+
+    return model, (loss_train, acc_train, loss_test, acc_test)
 
 
-def test():
-    pass
+def test(data, model, adj, loss_function):
+    data.reset_generator()
+    model.train(False)
+    
+    output = epoch_(model, data, adj)
+    loss = loss_function(output, data.labels)
+    acc = accuracy(output, data.labels)
+
+    return loss, acc
 
 
 def parse_args():
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type = int, default = 200,
                         help = 'Number of epochs to train.')
@@ -50,12 +77,12 @@ def parse_args():
                         help = 'Initial learning rate.')
     parser.add_argument('--weight_decay', type = float, default = 5e-4,
                         help = 'Weight decay (L2 loss on parameters).')
-    parser.add_argument('--hidden', type = int, default = 16,
-                        help = 'Number of hidden units.')
     parser.add_argument('--dropout', type = float, default = 0.5,
                         help = 'Dropout rate (1 - keep probability).')
     parser.add_argument('--data_dir', type = str, 
                         help = 'Directory from which to load input data')
+    parser.add_argument('--summary_file', type = str, 
+                        help = '.tsv file to write epoch summaries to.')
     parser.add_argument('--logfile', type = str, default = '',
                         help = 'Path to log file. \
                         If left blank logging will be printed to stdout only.')
@@ -63,28 +90,36 @@ def parse_args():
     return parser.parse_args()
 
 
-if __name__ == '__main__':
-
-    args = parse_args()
-
+def main(args):
     if args.logfile:
         logging.basicConfig(filename = args.logfile)
 
     adj = load_adjacency_matrix(args.data_dir)
     training_features, training_labels = load_training_data(args.data_dir)
     testing_features, testing_labels = load_testing_data(args.data_dir)
+    training_data = DataGenerator(training_features, training_labels)
+    testing_data = DataGenerator(testing_features, testing_labels)
 
     assert training_features.shape[1] == testing_features.shape[1], \
         'Dimensions of training and testing data not equal'
 
-    model = GCN(n_feat = training_features.shape[1],
-                n_hid = args.hidden,
-                n_class = 2,
+    model = GCN(n_feat = 1,
+                n_hid_1 = 4,
+                n_hi_2 = 8,
+                out_dim = 1,
                 dropout = args.dropout)
     optimizer = optim.Adam(model.parameters(), lr = args.lr, 
                         weight_decay = args.weight_decay)
+    loss_function = nn.MSELoss()
 
     start_time = time.time()
     for epoch in range(args.epoch):
-        train(epoch, model, optimizer)
+        epoch += 1
+        model, epoch_results = train(training_data, model, optimizer, 
+                                    adj, epoch, loss_function)
+        write_epoch_results(epoch, epoch_results, args.summary_file)
     logging.info(f'Model Fitting Complete. Time elapsed {start_time - time.time()}')
+
+
+if __name__ == '__main__':
+    main(parse_args())
