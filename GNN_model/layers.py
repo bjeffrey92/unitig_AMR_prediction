@@ -25,7 +25,7 @@ class GraphConvolution(Module):
 class GraphConvolutionPerNode(Module):
 
     def __init__(self, in_features, out_features):
-        super(GraphConvolution, self).__init__()
+        super(GraphConvolutionPerNode, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.lin = torch.nn.Linear(in_features, out_features) #encodes weights and bias

@@ -11,7 +11,7 @@ import torch.optim as optim
 from GNN_model.utils import load_training_data, load_testing_data, \
                          load_adjacency_matrix, save_model, accuracy,\
                          write_epoch_results, DataGenerator
-from GNN_model.models import GCN
+from GNN_model.models import GCN, GCNPerNode
 
 
 logging.basicConfig()
@@ -86,6 +86,8 @@ def parse_args():
                         help = 'Directory from which to load input data')
     parser.add_argument('--summary_file', type = str, 
                         help = '.tsv file to write epoch summaries to.')
+    parser.add_argument('--alt_model', action = 'store_true', default = False,
+                        help = 'Use per node model formulation')
     parser.add_argument('--logfile', type = str, default = '',
                         help = 'Path to log file. \
                         If left blank logging will be printed to stdout only.')
@@ -106,11 +108,16 @@ def main(args):
     training_data = DataGenerator(training_features, training_labels)
     testing_data = DataGenerator(testing_features, testing_labels)
 
-    model = GCN(n_feat = 1,
-                n_hid_1 = 4,
-                n_hid_2 = 8,
-                out_dim = 1,
-                dropout = args.dropout)
+    if not args.alt_model:
+        model = GCN(n_feat = 1,
+                    n_hid_1 = 4,
+                    n_hid_2 = 8,
+                    out_dim = 1,
+                    dropout = args.dropout)
+    else: 
+        model = GCNPerNode(n_feat = training_features.shape[1], n_hid_1 = 1000, 
+                        n_hid_2 = 500, out_dim = 1, dropout = 0.5)
+
     optimizer = optim.Adam(model.parameters(), lr = args.lr, 
                         weight_decay = args.weight_decay)
     loss_function = nn.MSELoss()

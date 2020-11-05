@@ -25,7 +25,7 @@ class GCN(nn.Module):
 
 class GCNPerNode(nn.Module):
     def __init__(self, n_feat, n_hid_1, n_hid_2, out_dim, dropout):
-        super(GCN, self).__init__()
+        super(GCNPerNode, self).__init__()
 
         self.gc = GraphConvolutionPerNode(n_feat, n_hid_1)
         self.linear1 = nn.Linear(n_hid_1, n_hid_2)
@@ -37,5 +37,5 @@ class GCNPerNode(nn.Module):
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.relu(self.linear1(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = self.linear(x)
+        out = self.linear2(x)[0][0]
         return torch.tanh(out)
