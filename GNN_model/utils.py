@@ -29,10 +29,10 @@ def write_epoch_results(epoch, epoch_results, summary_file):
         a.write(line + '\n')
 
 def save_model(model, filename):
-    pass
+    raise NotImplementedError
 
 def accuracy(predictions: torch.tensor, labels: torch.tensor):
-    diff = predictions - labels
+    diff = abs(predictions - labels)
     correct = diff[[i < 1 for i in diff]]
     return len(correct)/len(predictions) * 100
 
