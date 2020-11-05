@@ -14,9 +14,9 @@ class GCN(nn.Module):
         self.dropout = dropout
 
     def forward(self, x, adj):
-        x = F.relu(self.gc1(x, adj))
+        x = F.leaky_relu(self.gc1(x, adj))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.relu(self.gc2(x, adj))
+        x = F.leaky_relu(self.gc2(x, adj))
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = self.linear(x)
         out = x.sum()/len(x) #average across nodes
@@ -33,9 +33,9 @@ class GCNPerNode(nn.Module):
         self.dropout = dropout
 
     def forward(self, x, adj):
-        x = F.relu(self.gc(x, adj))
+        x = F.leaky_relu(self.gc(x, adj))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.relu(self.linear1(x))
+        x = F.leaky_relu(self.linear1(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
         out = self.linear2(x)[0][0]
         return torch.tanh(out)
