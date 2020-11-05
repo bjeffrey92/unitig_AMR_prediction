@@ -1,5 +1,6 @@
 import torch
 import os
+import random
 
 def load_training_data(data_dir, to_dense = True):
     features = torch.load(os.path.join(data_dir, 'training_features.pt'))
@@ -44,6 +45,7 @@ class DataGenerator():
         self.labels = torch.FloatTensor(labels)
         self.samples = len(labels)
         self.n = 0
+        self._index = list(range(self.samples))
 
     def _parse_features(self, features):
         l = [None] * len(features)
@@ -51,12 +53,19 @@ class DataGenerator():
             l[i] = features[i].unsqueeze(1)
         return l
 
-    def _iterate_features(self):
+    def _iterate(self):
         self.n += 1
-        yield self.features[self.n - 1]
+        yield self.features[self.n - 1], self.labels[self.n - 1]
 
-    def next_features(self):
-        return next(self._iterate_features())
+    def next_sample(self):
+        return next(self._iterate())
 
     def reset_generator(self):
         self.n = 0
+
+    def shuffle_samples(self):
+        random.shuffle(self._index)
+        self.labels = torch.tensor(list(
+                        {i:self.labels[i] for i in self._index}.values()))
+        self.features = list(
+            {i:self.features[i] for i in self._index}.values())

@@ -3,6 +3,7 @@
 import argparse
 import time
 import logging
+import math
 
 import torch
 import torch.nn as nn
@@ -20,14 +21,69 @@ logging.root.setLevel(logging.INFO)
 
 def epoch_(model, data, adj):
     data.reset_generator()
-    
+   
     outputs = [None] * data.samples
     for i in range(data.samples):
-        features = data.next_features()
+        features = data.next_sample()[0]
         outputs[i] = model(features, adj).unsqueeze(0)
 
     output_tensor = torch.cat(outputs, dim = 0)
+    
     return output_tensor
+
+
+def batch_train(data, model, optimizer, adj, epoch, 
+        loss_function, testing_data = None, batch_size = 32):
+    t = time.time()
+    model.train()
+    optimizer.zero_grad()
+    data.reset_generator()
+    data.shuffle_samples()
+
+    batches = math.floor(data.samples/batch_size)
+    final_batch = False
+    for batch in range(batches):
+        if final_batch: break #last batch will be empty if batch_size is not a multiple of n samples
+
+        #add remainder, to what would be second from last batch
+        #better to have one slightly larger batch at the end than one very small one
+        if batch == batches - 1:
+            batch_size += data.samples % batch_size
+            final_batch = True
+
+        outputs = [None] * batch_size
+        labels = [None] * batch_size
+        for i in range(batch_size):
+            features, label = data.next_sample()
+            labels[i] = label.unsqueeze(0)
+            outputs[i] = model(features, adj).unsqueeze(0)
+                
+        output_tensor = torch.cat(outputs, dim = 0)
+        labels = torch.cat(labels, dim = 0)
+
+        loss_train = loss_function(output_tensor, labels)
+        loss_train.backward()
+        optimizer.step()    
+
+    output = epoch_(model, data, adj)
+    loss_train = float(loss_function(output, data.labels))
+    acc_train = accuracy(output, data.labels)
+    
+    if testing_data:
+        loss_test, acc_test = test(testing_data, model, adj, loss_function)
+    else:
+        loss_test = 'N/A'
+        acc_test = 'N/A'
+    
+    logging.info(f'Epoch {epoch} complete\n' + \
+                f'\tTime taken = {time.time() - t}\n' + \
+                f'\tTraining Data Loss = {loss_train}\n' + \
+                f'\tTraining Data Accuracy = {acc_train}\n'
+                f'\tTesting Data Loss = {loss_test}\n' + \
+                f'\tTesting Data Accuracy = {acc_test}\n'
+                )
+
+    return model, (loss_train, acc_train, loss_test, acc_test)
 
 
 def train(data, model, optimizer, adj, epoch, 
@@ -35,7 +91,7 @@ def train(data, model, optimizer, adj, epoch,
     t = time.time()
     model.train()
     optimizer.zero_grad()
-    
+
     output = epoch_(model, data, adj)
     loss_train = loss_function(output, data.labels)
     acc_train = accuracy(output, data.labels)
@@ -48,7 +104,7 @@ def train(data, model, optimizer, adj, epoch,
     
     loss_train.backward()
     optimizer.step()
-
+    loss_train = float(loss_train) #to write it to file
 
     logging.info(f'Epoch {epoch} complete\n' + \
                 f'\tTime taken = {time.time() - t}\n' + \
@@ -58,7 +114,7 @@ def train(data, model, optimizer, adj, epoch,
                 f'\tTesting Data Accuracy = {acc_test}\n'
                 )
 
-    return model, (float(loss_train), acc_train, float(loss_test), acc_test)
+    return model, (loss_train, acc_train, loss_test, acc_test)
 
 
 def test(data, model, adj, loss_function):
@@ -66,7 +122,7 @@ def test(data, model, adj, loss_function):
     model.train(False)
     
     output = epoch_(model, data, adj)
-    loss = loss_function(output, data.labels)
+    loss = float(loss_function(output, data.labels))
     acc = accuracy(output, data.labels)
 
     return loss, acc
@@ -88,6 +144,9 @@ def parse_args():
                         help = '.tsv file to write epoch summaries to.')
     parser.add_argument('--alt_model', action = 'store_true', default = False,
                         help = 'Use per node model formulation')
+    parser.add_argument('--batch_size', default = None, 
+                        help = 'Size of batches to use for batch training, \
+                            if None training will be done per epoch')
     parser.add_argument('--logfile', type = str, default = '',
                         help = 'Path to log file. \
                         If left blank logging will be printed to stdout only.')
@@ -125,8 +184,17 @@ def main(args):
     start_time = time.time()
     for epoch in range(args.epoch):
         epoch += 1
-        model, epoch_results = train(training_data, model, optimizer, 
-                                    adj, epoch, loss_function, testing_data)
+        if args.batch_size:
+            #parameters tuned per batch
+            model, epoch_results = batch_train(training_data, model, 
+                                            optimizer, adj, epoch, loss_function, 
+                                            testing_data, 
+                                            batch_size = args.batch_size)
+        else:    
+            #parameters tuned per epoch
+            model, epoch_results = train(training_data, model, 
+                                    optimizer, adj, epoch, loss_function, 
+                                    testing_data)
         write_epoch_results(epoch, epoch_results, args.summary_file)
     logging.info(f'Model Fitting Complete. Time elapsed {start_time - time.time()}')
 
