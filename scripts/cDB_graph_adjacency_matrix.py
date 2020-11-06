@@ -47,7 +47,7 @@ def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
     return intermediate_unitigs
 
 
-def convert_to_tensor(adj_matrix):
+def convert_to_tensor(adj_matrix, torch_sparse_coo = True):
     
     shape = adj_matrix.shape
     
@@ -55,16 +55,13 @@ def convert_to_tensor(adj_matrix):
     col = torch.LongTensor(adj_matrix.col)
     value = torch.Tensor(adj_matrix.data)
     
-    return SparseTensor(row = row, col = col, 
+    sparse_tensor = SparseTensor(row = row, col = col, 
                         value = value, sparse_sizes = shape)
 
-    # values = adj_matrix.data
-    # indices = np.vstack((adj_matrix.row, adj_matrix.col))
-
-    # i = torch.LongTensor(indices)
-    # v = torch.FloatTensor(values)
-
-    # return torch.sparse_coo_tensor(i, v, torch.Size(shape))
+    if torch_sparse_coo:
+        return sparse_tensor.to_torch_sparse_coo_tensor()
+    else:
+        return sparse_tensor
 
 
 if __name__ == '__main__':
