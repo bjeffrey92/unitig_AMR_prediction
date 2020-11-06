@@ -55,7 +55,8 @@ def load_features(rtab_file):
 
 
 def split_training_and_testing(rtab_file, 
-                                files_to_include, 
+                                files_to_include,
+                                freq_filt = (0.01, 0.99),
                                 training_split = 0.7):
     '''
     create training and testing rtab files so features can be generated in most memory efficient way
@@ -90,7 +91,7 @@ def split_training_and_testing(rtab_file,
             j += 1
 
             frequency = sum([1 for i in row[1:] if i == '1'])/len(row[1:])
-            if frequency < 0.01 or frequency > 0.99: continue #only include intermediate frequency unitigs
+            if frequency < freq_filt[0] or frequency > freq_filt[1]: continue #only include intermediate frequency unitigs
 
             training_rows[i] = row[:training_n + 1]
             testing_rows[i] = row[:1] + row[training_n + 1:]

@@ -32,15 +32,16 @@ def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
         header = next(reader)
         file_filter = [i in files_to_include for i in header] #which to include
         intermediate_unitigs = []
-        i = 1
+        j = 1
         for row in reader:
-            sys.stdout.write(f'\rprocessing {i} of {num_unitigs} unitigs')
+            sys.stdout.write(f'\rprocessing {j} of {num_unitigs} unitigs')
             sys.stdout.flush()
             pattern_id = row[0]
             row = list(compress(row, file_filter))
             frequency = sum([1 for i in row if i == '1'])/len(row)
             if frequency >= filt[0] and frequency <= filt[1]:
                 intermediate_unitigs.append(pattern_id)
+            j += 1
         sys.stdout.write('')
         sys.stdout.flush()
     
@@ -76,7 +77,8 @@ if __name__ == '__main__':
 
     #applies frequency filter to unitigs
     metadata = parse_metadata(metadata_file, rtab_file, outcome_column) #to know which files to include
-    intermediate_unitigs = filter_unitigs(rtab_file, metadata.index) 
+    intermediate_unitigs = filter_unitigs(rtab_file, metadata.index, 
+                                        filt = (0.05, 0.95)) 
 
     logging.info('Identifying intermediate frequency nodes and mapping them to uuids, this could take a while')
     #map unitig sequences to their uuid
