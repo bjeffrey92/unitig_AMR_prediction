@@ -46,7 +46,7 @@ class DataGenerator():
         self.n_features = self.features[0].shape[0]
         self.n_samples = len(labels)
         self.n = 0
-        self._index = list(range(self.samples))
+        self._index = list(range(self.n_samples))
 
     def _parse_features(self, features):
         l = [None] * len(features)
