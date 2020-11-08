@@ -22,8 +22,8 @@ logging.root.setLevel(logging.INFO)
 def epoch_(model, data, adj):
     data.reset_generator()
    
-    outputs = [None] * data.samples
-    for i in range(data.samples):
+    outputs = [None] * data.n_samples
+    for i in range(data.n_samples):
         features = data.next_sample()[0]
         outputs[i] = model(features, adj).unsqueeze(0)
 
@@ -40,7 +40,7 @@ def batch_train(data, model, optimizer, adj, epoch,
     data.reset_generator()
     data.shuffle_samples()
 
-    batches = math.floor(data.samples/batch_size)
+    batches = math.floor(data.n_samples/batch_size)
     final_batch = False
     for batch in range(batches):
         if final_batch: break #last batch will be empty if batch_size is not a multiple of n samples
@@ -48,7 +48,7 @@ def batch_train(data, model, optimizer, adj, epoch,
         #add remainder, to what would be second from last batch
         #better to have one slightly larger batch at the end than one very small one
         if batch == batches - 1:
-            batch_size += data.samples % batch_size
+            batch_size += data.n_samples % batch_size
             final_batch = True
 
         outputs = [None] * batch_size
@@ -168,13 +168,13 @@ def main(args):
     testing_data = DataGenerator(testing_features, testing_labels)
 
     if not args.alt_model:
-        model = GCN(n_feat = 1,
+        model = GCN(n_feat = training_data.n_features,
                     n_hid_1 = 4,
                     n_hid_2 = 8,
                     out_dim = 1,
                     dropout = args.dropout)
     else: 
-        model = GCNPerNode(n_feat = training_features.shape[1], n_hid_1 = 1000, 
+        model = GCNPerNode(n_feat = training_data.n_features, n_hid_1 = 1000, 
                         n_hid_2 = 500, out_dim = 1, dropout = 0.5)
 
     optimizer = optim.Adam(model.parameters(), lr = args.lr, 
