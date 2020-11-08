@@ -132,7 +132,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type = int, default = 200,
                         help = 'Number of epochs to train.')
-    parser.add_argument('--lr', type = float, default = 0.001,
+    parser.add_argument('--lr', type = float, default = 0.0001,
                         help = 'Initial learning rate.')
     parser.add_argument('--weight_decay', type = float, default = 5e-4,
                         help = 'Weight decay (L2 loss on parameters).')
