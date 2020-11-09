@@ -30,7 +30,7 @@ def write_epoch_results(epoch, epoch_results, summary_file):
         a.write(line + '\n')
 
 def save_model(model, filename):
-    raise NotImplementedError
+    torch.save(model, filename)
 
 def accuracy(predictions: torch.tensor, labels: torch.tensor):
     diff = abs(predictions - labels)

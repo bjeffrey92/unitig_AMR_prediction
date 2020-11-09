@@ -128,6 +128,19 @@ def test(data, model, adj, loss_function):
     return loss, acc
 
 
+def load_data(data_dir):
+    adj = load_adjacency_matrix(data_dir)
+    training_features, training_labels = load_training_data(data_dir)
+    testing_features, testing_labels = load_testing_data(data_dir)
+    assert training_features.shape[1] == testing_features.shape[1], \
+        'Dimensions of training and testing data not equal'
+    
+    training_data = DataGenerator(training_features, training_labels)
+    testing_data = DataGenerator(testing_features, testing_labels)
+
+    return training_data, testing_data, adj
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type = int, default = 200,
@@ -158,17 +171,10 @@ def main(args):
     if args.logfile:
         logging.basicConfig(filename = args.logfile)
 
-    adj = load_adjacency_matrix(args.data_dir)
-    training_features, training_labels = load_training_data(args.data_dir)
-    testing_features, testing_labels = load_testing_data(args.data_dir)
-    assert training_features.shape[1] == testing_features.shape[1], \
-        'Dimensions of training and testing data not equal'
-    
-    training_data = DataGenerator(training_features, training_labels)
-    testing_data = DataGenerator(testing_features, testing_labels)
+    training_data, testing_data, adj = load_data(args.data_dir)
 
     if not args.alt_model:
-        model = GCN(n_feat = training_data.n_features,
+        model = GCN(n_feat = 1,
                     n_hid_1 = 4,
                     n_hid_2 = 8,
                     out_dim = 1,
@@ -196,7 +202,7 @@ def main(args):
                                     optimizer, adj, epoch, loss_function, 
                                     testing_data)
         write_epoch_results(epoch, epoch_results, args.summary_file)
-    logging.info(f'Model Fitting Complete. Time elapsed {start_time - time.time()}')
+    logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
 
 if __name__ == '__main__':
