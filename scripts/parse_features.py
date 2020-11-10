@@ -5,6 +5,7 @@ import torch
 import os
 import logging
 import sys
+import tempfile
 from itertools import compress
 
 logging.basicConfig()
@@ -43,13 +44,14 @@ def parse_metadata(metadata_file, rtab_file, outcome_column):
 
 def split_training_and_testing(rtab_file, 
                                 files_to_include,
+                                training_rtab_file,
+                                testing_rtab_file,
+                                num_unitigs,
                                 freq_filt = (0.01, 0.99),
                                 training_split = 0.7):
     '''
     create training and testing rtab files so features can be generated in most memory efficient way
     '''
-
-    num_unitigs = sum(1 for line in open(rtab_file)) - 1
 
     #get training and testing data as separate lists
     with open(rtab_file, 'r') as a:
@@ -87,24 +89,25 @@ def split_training_and_testing(rtab_file,
         sys.stdout.write('')
         sys.stdout.flush()
 
-    training_data_file = os.path.join(os.path.dirname(rtab_file), 
-                            'training_data_' + os.path.basename(rtab_file))
-    testing_data_file = os.path.join(os.path.dirname(rtab_file), 
-                            'testing_data_' + os.path.basename(rtab_file))
+    def has_header(rtab_file):
+        rtab_file.seek(0)
+        row_count = 0
+        for row in rtab_file:
+            row_count += 1
+            if row_count == 1:
+                return True
+        return False
 
-    logging.info(f'training data being written to {training_data_file}')
-    with open(training_data_file, 'w', newline = '') as csvfile:
-        writer = csv.writer(csvfile, delimiter = '\t')
-        for row in training_rows[:i]:
-            writer.writerow(row)
+    if has_header(training_rtab_file):
+        training_rows = training_rows[1:]
+    if has_header(testing_rtab_file):
+        testing_rows = testing_rows[1:]
 
-    logging.info(f'testing data being written to {testing_data_file}')
-    with open(testing_data_file, 'w', newline = '') as csvfile:
-        writer = csv.writer(csvfile, delimiter = '\t')
-        for row in testing_rows[:i]:
-            writer.writerow(row)
+    training_rows = [('\t'.join(x) + '\n').encode() for x in training_rows[:i]]
+    training_rtab_file.writelines(training_rows)
 
-    return training_data_file, testing_data_file
+    testing_rows = [('\t'.join(x) + '\n').encode() for x in testing_rows[:i]]
+    testing_rtab_file.writelines(testing_rows)
 
 
 def load_features(rtab_file):
@@ -187,24 +190,40 @@ if __name__ == '__main__':
     #maps entries in rtab to metadata
     metadata = parse_metadata(metadata_file, rtab_file, outcome_column)
 
-    training_rtab_file, testing_rtab_file = \
-                split_training_and_testing(rtab_file, metadata.index)
+    #alphabetical list of countries
+    countries = metadata.Country.unique()
+    countries = countries.sort().tolist()
+    
+    #if don't wish to specify countries
+    # countries = []
 
-    #reads in rtab as sparse feature tensor
-    training_features = load_features(training_rtab_file)
-    testing_features = load_features(testing_rtab_file)
+    with tempfile.TemporaryFile() as training_rtab_file, \
+        tempfile.TemporaryFile() as testing_rtab_file:
+    
+        num_unitigs = sum(1 for line in open(rtab_file)) - 1
 
-    #ensure metadata is in same order as features for label extraction
-    training_metadata = order_metadata(metadata, training_rtab_file)
-    testing_metadata = order_metadata(metadata, testing_rtab_file)
+        if countries:
+            for country in countries:
+                to_include = metadata[metadata.Country == country].index
+                split_training_and_testing(rtab_file, to_include, 
+                                        training_rtab_file, testing_rtab_file,
+                                        num_unitigs)
+        else:
+            split_training_and_testing(rtab_file, metadata.index, 
+                                        training_rtab_file, testing_rtab_file,
+                                        num_unitigs)
+
+        #reads in rtab as sparse feature tensor
+        training_features = load_features(training_rtab_file)
+        testing_features = load_features(testing_rtab_file)
+
+        #ensure metadata is in same order as features for label extraction
+        training_metadata = order_metadata(metadata, training_rtab_file)
+        testing_metadata = order_metadata(metadata, testing_rtab_file)
 
     #parse training and testing labels as tensors
     training_labels = load_labels(training_metadata, outcome_column)
     testing_labels = load_labels(testing_metadata, outcome_column)
-
-    #alphabetical list of countries
-    countries = metadata.Country.unique()
-    countries = countries.sort().tolist()
 
     #countries of training and testing data as tensor of 1 and 0
     training_countries = load_countries(training_metadata)
