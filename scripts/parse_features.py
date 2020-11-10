@@ -10,48 +10,35 @@ from itertools import compress
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
-def load_features(rtab_file):
-    '''
-    parses rtab file as sparse matrix of features
-    this was the most memory efficient way i could find to do this
-    '''
-    num_unitigs = sum(1 for line in open(rtab_file)) - 1
+
+def parse_metadata(metadata_file, rtab_file, outcome_column):
+    metadata_df = pd.read_csv(metadata_file)
+
+    #drop everything without measurement for outcome
+    metadata_df = metadata_df.loc[~metadata_df[outcome_column].isna()] 
 
     with open(rtab_file, 'r') as a:
         reader = csv.reader(a, delimiter = '\t')
-        header = next(reader)
-        num_samples = len(header) - 1
+        input_files = next(reader)[1:]
     
-        x_idx = []
-        y_idx = []
-        values = []
+    assert all([i.endswith('.contigs_velvet') for i in input_files])    
+    accessions = [i.strip('.contigs_velvet') for i in input_files]
 
-        i = 0
-        for row in reader:
-            for j in range(1, len(row)): #first element of row is unitig number
-                if row[j] == '1':
-                    x_idx.append(j - 1)
-                    y_idx.append(i)
-                    values.append(1)
-            i += 1
-            sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
-            sys.stdout.flush()
-        sys.stdout.write('')
-        sys.stdout.flush()
+    accessions = pd.DataFrame(accessions)
+    df = metadata_df.merge(accessions, 
+                        left_on = 'Sanger_lane', right_on = 0)
+    df = df.rename(columns = {0:'Filename'})
+    df['Filename'] = df['Filename'] + '.contigs_velvet' #so can identify relevant inputs in the rtab
 
-    indices = torch.LongTensor([x_idx, y_idx])
-    
-    #delete these to free up RAM
-    del x_idx
-    del y_idx
+    diff = len(accessions) - len(df)
+    if diff > 0:
+        logging.warning(f'{diff} entries in {rtab_file} could not be mapped to entries in {metadata_file}')
+        input_files = [i for i in input_files if i in df.Filename.values] #get all which are present
 
-    shape = (num_samples, num_unitigs)
-    values_tensor = torch.FloatTensor(values)
+    df.set_index('Filename', inplace = True)
+    df = df.loc[input_files] #order metadata by order that files are present in the rtab
 
-    del values
-
-    features = torch.sparse_coo_tensor(indices, values_tensor, shape)
-    return features
+    return df
 
 
 def split_training_and_testing(rtab_file, 
@@ -120,34 +107,48 @@ def split_training_and_testing(rtab_file,
     return training_data_file, testing_data_file
 
 
-def parse_metadata(metadata_file, rtab_file, outcome_column):
-    metadata_df = pd.read_csv(metadata_file)
-
-    #drop everything without measurement for outcome
-    metadata_df = metadata_df.loc[~metadata_df[outcome_column].isna()] 
+def load_features(rtab_file):
+    '''
+    parses rtab file as sparse matrix of features
+    this was the most memory efficient way i could find to do this
+    '''
+    num_unitigs = sum(1 for line in open(rtab_file)) - 1
 
     with open(rtab_file, 'r') as a:
         reader = csv.reader(a, delimiter = '\t')
-        input_files = next(reader)[1:]
+        header = next(reader)
+        num_samples = len(header) - 1
     
-    assert all([i.endswith('.contigs_velvet') for i in input_files])    
-    accessions = [i.strip('.contigs_velvet') for i in input_files]
+        x_idx = []
+        y_idx = []
+        values = []
 
-    accessions = pd.DataFrame(accessions)
-    df = metadata_df.merge(accessions, 
-                        left_on = 'Sanger_lane', right_on = 0)
-    df = df.rename(columns = {0:'Filename'})
-    df['Filename'] = df['Filename'] + '.contigs_velvet' #so can identify relevant inputs in the rtab
+        i = 0
+        for row in reader:
+            for j in range(1, len(row)): #first element of row is unitig number
+                if row[j] == '1':
+                    x_idx.append(j - 1)
+                    y_idx.append(i)
+                    values.append(1)
+            i += 1
+            sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
+            sys.stdout.flush()
+        sys.stdout.write('')
+        sys.stdout.flush()
 
-    diff = len(accessions) - len(df)
-    if diff > 0:
-        logging.warning(f'{diff} entries in {rtab_file} could not be mapped to entries in {metadata_file}')
-        input_files = [i for i in input_files if i in df.Filename.values] #get all which are present
+    indices = torch.LongTensor([x_idx, y_idx])
+    
+    #delete these to free up RAM
+    del x_idx
+    del y_idx
 
-    df.set_index('Filename', inplace = True)
-    df = df.loc[input_files] #order metadata by order that files are present in the rtab
+    shape = (num_samples, num_unitigs)
+    values_tensor = torch.FloatTensor(values)
 
-    return df
+    del values
+
+    features = torch.sparse_coo_tensor(indices, values_tensor, shape)
+    return features
 
 
 def load_labels(metadata, label_column, rtab_file):
