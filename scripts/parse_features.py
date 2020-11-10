@@ -151,15 +151,31 @@ def load_features(rtab_file):
     return features
 
 
-def load_labels(metadata, label_column, rtab_file):
-
+def order_metadata(metadata, rtab_file):
+    
     with open(rtab_file, 'r') as a:
         reader = csv.reader(a, delimiter = '\t')
         input_files = next(reader)[1:]
 
     metadata = metadata.loc[input_files] #order dataframe 
     
+    return metadata
+
+
+def load_labels(metadata, label_column):
     return torch.FloatTensor(metadata[label_column].values)
+
+
+def load_countries(metadata, countries = countries):
+    country_tensors = {}
+    for i in countries:
+        country_tensors[i] = \
+            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) for x in countries])
+
+    def parse_country(country):
+        return country_tensors[country]
+
+    return torch.stack(metadata.Country.apply(parse_country).to_list())
 
 
 if __name__ == '__main__':
@@ -178,6 +194,18 @@ if __name__ == '__main__':
     training_features = load_features(training_rtab_file)
     testing_features = load_features(testing_rtab_file)
 
+    #ensure metadata is in same order as features for label extraction
+    training_metadata = order_metadata(metadata, training_rtab_file)
+    testing_metadata = order_metadata(metadata, testing_rtab_file)
+
     #parse training and testing labels as tensors
-    training_labels = load_labels(metadata, outcome_column, training_rtab_file)
-    testing_labels = load_labels(metadata, outcome_column, testing_rtab_file)
+    training_labels = load_labels(training_metadata, outcome_column)
+    testing_labels = load_labels(testing_metadata, outcome_column)
+
+    #alphabetical list of countries
+    countries = metadata.Country.unique()
+    countries = countries.sort().tolist()
+
+    #countries of training and testing data as tensor of 1 and 0
+    training_countries = load_countries(training_metadata)
+    testing_countries = load_countries(testing_metadata)
