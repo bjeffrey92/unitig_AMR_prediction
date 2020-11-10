@@ -37,8 +37,13 @@ def accuracy(predictions: torch.tensor, labels: torch.tensor):
     correct = diff[[i < 1 for i in diff]]
     return len(correct)/len(predictions) * 100
 
+#custom loss function 
+def logcosh(true, pred):
+    loss = torch.log(torch.cosh(pred - true))
+    return torch.sum(loss)
+
 class DataGenerator():
-    def __init__(self, features, labels):
+    def __init__(self, features, labels, auto_reset_generator = True):
         assert len(features) == len(labels), \
             'Features and labels are of different length'
         self.features = self._parse_features(features)
@@ -47,6 +52,7 @@ class DataGenerator():
         self.n_samples = len(labels)
         self.n = 0
         self._index = list(range(self.n_samples))
+        self.auto_reset_generator = auto_reset_generator
 
     def _parse_features(self, features):
         l = [None] * len(features)
@@ -56,7 +62,12 @@ class DataGenerator():
 
     def _iterate(self):
         self.n += 1
-        yield self.features[self.n - 1], self.labels[self.n - 1]
+        if self.n == self.n_samples and self.auto_reset_generator:
+            sample = self.features[self.n - 1], self.labels[self.n - 1]
+            self.reset_generator()
+            yield sample
+        else:
+            yield self.features[self.n - 1], self.labels[self.n - 1]
 
     def next_sample(self):
         return next(self._iterate())

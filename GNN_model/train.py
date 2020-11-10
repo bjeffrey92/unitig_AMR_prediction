@@ -11,7 +11,7 @@ import torch.optim as optim
 
 from GNN_model.utils import load_training_data, load_testing_data, \
                          load_adjacency_matrix, save_model, accuracy,\
-                         write_epoch_results, DataGenerator
+                         logcosh, write_epoch_results, DataGenerator
 from GNN_model.models import GCN, GCNPerNode, VanillaNN
 
 
@@ -205,5 +205,5 @@ def main(args):
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
 
-if __name__ == '__main__':
-    main(parse_args())
+# if __name__ == '__main__':
+#     main(parse_args())
