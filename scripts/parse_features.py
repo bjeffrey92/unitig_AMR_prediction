@@ -46,12 +46,15 @@ def split_training_and_testing(rtab_file,
                                 files_to_include,
                                 training_rtab_file,
                                 testing_rtab_file,
-                                num_unitigs,
+                                metadata = None, 
+                                country_split = False,
                                 freq_filt = (0.01, 0.99),
                                 training_split = 0.7):
     '''
     create training and testing rtab files so features can be generated in most memory efficient way
     '''
+
+    num_unitigs = sum(1 for line in open(rtab_file)) - 1
 
     #get training and testing data as separate lists
     with open(rtab_file, 'r') as a:
@@ -62,13 +65,35 @@ def split_training_and_testing(rtab_file,
         header = list(compress(header, filt))
         total_samples = len(header) - 1
 
-        training_n = round(total_samples * training_split)
-        testing_n = total_samples - training_n
+        if country_split:
+            #get indices of samples in the rtab file header so that countries 
+            #are equally represented in the training and testing data
+            #train test split may not be exact
+            training_indices = []
+            testing_indices = []            
+            country_freq = metadata.Country.value_counts().to_dict()
+            for c in country_freq:
+                c_training_n = round(country_freq[c] * training_split)
+                c_samples = \
+                    metadata[metadata.Country == c].index.to_list()
+                training_indices += [header.index(i) \
+                                            for i in c_samples[:c_training_n]]
+                testing_indices += [header.index(i) \
+                                            for i in c_samples[c_training_n:]]
+                training_n = len(training_indices)
+                testing_n = len(testing_indices)
+        else:
+            #split randomly
+            training_n = round(total_samples * training_split)
+            testing_n = total_samples - training_n
+            training_indices = list(range(1, training_n + 1))
+            testing_indices = list(range(training_n + 1, len(header)))
 
         #memory allocation
-        training_rows = [header[:training_n + 1]] + \
+        header_array = np.array(header)
+        training_rows = header[:1] + header_array[training_indices].tolist() + \
             ([[None] * (training_n + 1)] * num_unitigs)
-        testing_rows = [header[:1] + header[training_n + 1:]] + \
+        testing_rows = header[:1] + header_array[testing_indices].tolist() + \
             ([[None] * (testing_n + 1)] * num_unitigs)
 
         i = 1
@@ -82,26 +107,13 @@ def split_training_and_testing(rtab_file,
             frequency = sum([1 for i in row[1:] if i == '1'])/len(row[1:])
             if frequency < freq_filt[0] or frequency > freq_filt[1]: continue #only include intermediate frequency unitigs
 
-            training_rows[i] = row[:training_n + 1]
-            testing_rows[i] = row[:1] + row[training_n + 1:]
+            row_array = np.array(row)
+            training_rows[i] = row[:1] + row_array[training_indices].tolist()
+            testing_rows[i] = row[:1] + row_array[testing_indices].tolist()
             
             i += 1
         sys.stdout.write('')
         sys.stdout.flush()
-
-    def has_header(rtab_file):
-        rtab_file.seek(0)
-        row_count = 0
-        for row in rtab_file:
-            row_count += 1
-            if row_count == 1:
-                return True
-        return False
-
-    if has_header(training_rtab_file):
-        training_rows = training_rows[1:]
-    if has_header(testing_rtab_file):
-        testing_rows = testing_rows[1:]
 
     training_rows = [('\t'.join(x) + '\n').encode() for x in training_rows[:i]]
     training_rtab_file.writelines(training_rows)
@@ -192,7 +204,8 @@ if __name__ == '__main__':
 
     #alphabetical list of countries
     countries = metadata.Country.unique()
-    countries = countries.sort().tolist()
+    countries.sort()
+    countries = countries.tolist()
     
     #if don't wish to specify countries
     # countries = []
@@ -200,18 +213,13 @@ if __name__ == '__main__':
     with tempfile.TemporaryFile() as training_rtab_file, \
         tempfile.TemporaryFile() as testing_rtab_file:
     
-        num_unitigs = sum(1 for line in open(rtab_file)) - 1
-
         if countries:
-            for country in countries:
-                to_include = metadata[metadata.Country == country].index
-                split_training_and_testing(rtab_file, to_include, 
-                                        training_rtab_file, testing_rtab_file,
-                                        num_unitigs)
-        else:
             split_training_and_testing(rtab_file, metadata.index, 
                                         training_rtab_file, testing_rtab_file,
-                                        num_unitigs)
+                                        metadata, country_split = True)
+        else:
+            split_training_and_testing(rtab_file, metadata.index, 
+                                        training_rtab_file, testing_rtab_file)
 
         #reads in rtab as sparse feature tensor
         training_features = load_features(training_rtab_file)
