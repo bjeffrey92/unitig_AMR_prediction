@@ -33,7 +33,7 @@ def epoch_(model, data, adj):
 
 
 def batch_train(data, model, optimizer, adj, epoch, 
-        loss_function, testing_data = None, batch_size = 32):
+        loss_function, accuracy, testing_data = None, batch_size = 32):
     t = time.time()
     model.train()
     optimizer.zero_grad()
@@ -87,7 +87,7 @@ def batch_train(data, model, optimizer, adj, epoch,
 
 
 def train(data, model, optimizer, adj, epoch, 
-        loss_function, testing_data = None):
+        loss_function, accuracy, testing_data = None):
     t = time.time()
     model.train()
     optimizer.zero_grad()
@@ -97,7 +97,8 @@ def train(data, model, optimizer, adj, epoch,
     acc_train = accuracy(output, data.labels)
     
     if testing_data:
-        loss_test, acc_test = test(testing_data, model, adj, loss_function)
+        loss_test, acc_test = test(testing_data, model, 
+                                    adj, loss_function, accuracy)
     else:
         loss_test = 'N/A'
         acc_test = 'N/A'
@@ -117,7 +118,7 @@ def train(data, model, optimizer, adj, epoch,
     return model, (loss_train, acc_train, loss_test, acc_test)
 
 
-def test(data, model, adj, loss_function):
+def test(data, model, adj, loss_function, accuracy):
     data.reset_generator()
     model.train(False)
     
@@ -194,13 +195,13 @@ def main(args):
             #parameters tuned per batch
             model, epoch_results = batch_train(training_data, model, 
                                             optimizer, adj, epoch, loss_function, 
-                                            testing_data, 
+                                            accuracy, testing_data, 
                                             batch_size = args.batch_size)
         else:    
             #parameters tuned per epoch
             model, epoch_results = train(training_data, model, 
                                     optimizer, adj, epoch, loss_function, 
-                                    testing_data)
+                                    accuracy, testing_data)
         write_epoch_results(epoch, epoch_results, args.summary_file)
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 

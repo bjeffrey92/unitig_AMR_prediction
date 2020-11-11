@@ -1,6 +1,7 @@
 import torch
 import os
 import random
+import numpy as np
 
 def load_training_data(data_dir, to_dense = True):
     features = torch.load(os.path.join(data_dir, 'training_features.pt'))
@@ -28,11 +29,11 @@ def load_countries(data_dir):
     def transform(countries):
         countries = countries.tolist()
         c_index =  countries.index(max(countries))
-        return torch.FloatTensor([c_index])
+        return torch.LongTensor([c_index])
     
-    training_countries = torch.stack(
+    training_countries = torch.cat(
                             list(map(transform, training_countries.unbind(0))))
-    testing_countries = torch.stack(
+    testing_countries = torch.cat(
                             list(map(transform, testing_countries.unbind(0))))
     return training_countries, testing_countries
 
@@ -53,6 +54,15 @@ def accuracy(predictions: torch.tensor, labels: torch.tensor):
     correct = diff[[i < 1 for i in diff]]
     return len(correct)/len(predictions) * 100
 
+def country_accuracy(predictions: torch.tensor, labels: torch.tensor):
+    assert len(predictions) == len(labels), \
+        'Predictions and labels are of unequal lengths'
+    predictions = predictions.tolist()
+    labels = labels.tolist()
+    correct_bool = [predictions[i].index(max(predictions[i]))  == labels[i] 
+                        for i in range(len(predictions))]
+    return len(np.array(labels)[correct_bool])/len(labels) * 100
+
 #custom loss function 
 def logcosh(true, pred):
     loss = torch.log(torch.cosh(pred - true))
@@ -63,7 +73,7 @@ class DataGenerator():
         assert len(features) == len(labels), \
             'Features and labels are of different length'
         self.features = self._parse_features(features)
-        self.labels = torch.FloatTensor(labels)
+        self.labels = labels
         self.n_nodes = self.features[0].shape[0]
         self.n_samples = len(labels)
         self.n = 0
