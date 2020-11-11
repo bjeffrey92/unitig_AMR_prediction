@@ -20,6 +20,22 @@ def load_adjacency_matrix(data_dir):
     adj = torch.load(os.path.join(data_dir, 'unitig_adjacency_tensor.pt'))
     return adj
 
+def load_countries(data_dir):
+    training_countries = torch.load(os.path.join(data_dir, 
+                                                'training_countries.pt'))
+    testing_countries = torch.load(os.path.join(data_dir, 
+                                                'testing_countries.pt'))
+    def transform(countries):
+        countries = countries.tolist()
+        c_index =  countries.index(max(countries))
+        return torch.FloatTensor([c_index])
+    
+    training_countries = torch.stack(
+                            list(map(transform, training_countries.unbind(0))))
+    testing_countries = torch.stack(
+                            list(map(transform, testing_countries.unbind(0))))
+    return training_countries, testing_countries
+
 def write_epoch_results(epoch, epoch_results, summary_file):
     if not os.path.isfile(summary_file):
         with open(summary_file, 'w') as a:
