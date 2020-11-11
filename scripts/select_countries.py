@@ -1,7 +1,7 @@
 import pandas as pd 
 import random
 
-df = pd.read_csv('data/metadata.csv')
+df = pd.read_csv('data/metadata_accessions_in_rtab.csv')
 
 Abs = ['log2_azm_mic',
     'log2_cip_mic',

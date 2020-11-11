@@ -48,7 +48,7 @@ def split_training_and_testing(rtab_file,
                                 testing_rtab_file,
                                 metadata = None, 
                                 country_split = False,
-                                freq_filt = (0.01, 0.99),
+                                freq_filt = (0.05, 0.95),
                                 training_split = 0.7):
     '''
     create training and testing rtab files so features can be generated in most memory efficient way
@@ -91,9 +91,9 @@ def split_training_and_testing(rtab_file,
 
         #memory allocation
         header_array = np.array(header)
-        training_rows = header[:1] + header_array[training_indices].tolist() + \
+        training_rows = [header[:1] + header_array[training_indices].tolist()] + \
             ([[None] * (training_n + 1)] * num_unitigs)
-        testing_rows = header[:1] + header_array[testing_indices].tolist() + \
+        testing_rows = [header[:1] + header_array[testing_indices].tolist()] + \
             ([[None] * (testing_n + 1)] * num_unitigs)
 
         i = 1
@@ -115,11 +115,15 @@ def split_training_and_testing(rtab_file,
         sys.stdout.write('')
         sys.stdout.flush()
 
-    training_rows = [('\t'.join(x) + '\n').encode() for x in training_rows[:i]]
-    training_rtab_file.writelines(training_rows)
+    with open(training_rtab_file, 'w', newline = '') as csvfile:
+        writer = csv.writer(csvfile, delimiter = '\t')
+        for row in training_rows[:i]:
+            writer.writerow(row)
 
-    testing_rows = [('\t'.join(x) + '\n').encode() for x in testing_rows[:i]]
-    testing_rtab_file.writelines(testing_rows)
+    with open(testing_rtab_file, 'w', newline = '') as csvfile:
+        writer = csv.writer(csvfile, delimiter = '\t')
+        for row in testing_rows[:i]:
+            writer.writerow(row)
 
 
 def load_features(rtab_file):
@@ -181,7 +185,7 @@ def load_labels(metadata, label_column):
     return torch.FloatTensor(metadata[label_column].values)
 
 
-def load_countries(metadata, countries = countries):
+def load_countries(metadata, countries):
     country_tensors = {}
     for i in countries:
         country_tensors[i] = \
@@ -193,10 +197,29 @@ def load_countries(metadata, countries = countries):
     return torch.stack(metadata.Country.apply(parse_country).to_list())
 
 
+def save_data(out_dir, training_features, testing_features, 
+                training_labels, testing_labels, 
+                training_countries = None, testing_countries = None):
+    
+    torch.save(training_features, os.path.join(out_dir, 'training_features.pt'))
+    torch.save(testing_features, os.path.join(out_dir, 'testing_features.pt'))
+    torch.save(training_labels, os.path.join(out_dir, 'training_labels.pt'))
+    torch.save(testing_labels, os.path.join(out_dir, 'testing_labels.pt'))
+
+    if training_countries is not None:
+        torch.save(training_countries, 
+                os.path.join(out_dir, 'training_countries.pt'))
+    if testing_countries is not None:
+        torch.save(testing_countries, 
+                os.path.join(out_dir, 'testing_countries.pt'))
+
+
+
 if __name__ == '__main__':
 
     rtab_file = 'data/gonno_unitigs/gonno.rtab'
-    metadata_file = 'data/metadata.csv'
+    # metadata_file = 'data/metadata.csv'
+    metadata_file = 'data/country_normalised_metadata.csv'
     outcome_column = 'log2_cip_mic'
 
     #maps entries in rtab to metadata
@@ -210,9 +233,10 @@ if __name__ == '__main__':
     #if don't wish to specify countries
     # countries = []
 
-    with tempfile.TemporaryFile() as training_rtab_file, \
-        tempfile.TemporaryFile() as testing_rtab_file:
-    
+    with tempfile.NamedTemporaryFile() as a, tempfile.NamedTemporaryFile() as b:
+        training_rtab_file = a.name
+        testing_rtab_file = b.name
+
         if countries:
             split_training_and_testing(rtab_file, metadata.index, 
                                         training_rtab_file, testing_rtab_file,
@@ -234,5 +258,9 @@ if __name__ == '__main__':
     testing_labels = load_labels(testing_metadata, outcome_column)
 
     #countries of training and testing data as tensor of 1 and 0
-    training_countries = load_countries(training_metadata)
-    testing_countries = load_countries(testing_metadata)
+    training_countries = load_countries(training_metadata, countries)
+    testing_countries = load_countries(testing_metadata, countries)
+
+    out_dir = os.path.join('data/model_inputs/country_normalised', outcome_column)
+    save_data(out_dir, training_features, testing_features, training_labels, 
+                testing_labels, training_countries, testing_countries)
