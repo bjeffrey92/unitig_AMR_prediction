@@ -48,7 +48,7 @@ class DataGenerator():
             'Features and labels are of different length'
         self.features = self._parse_features(features)
         self.labels = torch.FloatTensor(labels)
-        self.n_features = self.features[0].shape[0]
+        self.n_nodes = self.features[0].shape[0]
         self.n_samples = len(labels)
         self.n = 0
         self._index = list(range(self.n_samples))

@@ -180,7 +180,7 @@ def main(args):
                     out_dim = 1,
                     dropout = args.dropout)
     else: 
-        model = GCNPerNode(n_feat = training_data.n_features, n_hid_1 = 1000, 
+        model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 1000, 
                         n_hid_2 = 500, out_dim = 1, dropout = 0.5)
 
     optimizer = optim.Adam(model.parameters(), lr = args.lr, 

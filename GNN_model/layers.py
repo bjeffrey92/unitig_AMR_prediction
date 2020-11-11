@@ -13,8 +13,9 @@ class GraphConvolution(Module):
 
     def forward(self, layer_input, adj):
         x = self.lin(layer_input) #Y = WX^T + B
-        output = torch.sparse.mm(adj, x) 
-        return output 
+        x = torch.sparse.mm(adj, x)
+        # output = torch.stack(tuple(map(torch.mean, torch.unbind(x))))
+        return x
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' \
