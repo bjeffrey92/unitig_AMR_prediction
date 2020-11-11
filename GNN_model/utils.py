@@ -40,7 +40,7 @@ def load_countries(data_dir):
 def write_epoch_results(epoch, epoch_results, summary_file):
     if not os.path.isfile(summary_file):
         with open(summary_file, 'w') as a:
-            a.write('epoch\ttraining_data_loss\ttraining_data_acc\ttesting_data_loss\ttesting_data_loss\n')
+            a.write('epoch\ttraining_data_loss\ttraining_data_acc\ttesting_data_loss\ttesting_data_acc\n')
 
     with open(summary_file, 'a') as a:
         line = str(epoch) + '\t' + '\t'.join([str(i) for i in epoch_results])
