@@ -1,6 +1,7 @@
 import torch
 import os
 import random
+import logging
 import numpy as np
 
 def load_training_data(data_dir, to_dense = True):
@@ -107,3 +108,26 @@ class DataGenerator():
                         {i:self.labels[i] for i in self._index}.values()))
         self.features = list(
             {i:self.features[i] for i in self._index}.values())
+
+class MetricAccumulator():
+    def __init__(self):
+        self.training_data_loss = []
+        self.training_data_acc = []
+        self.testing_data_loss = []
+        self.testing_data_acc = []
+
+    def add(self, epoch_results):
+        self.training_data_loss.append(epoch_results[0])
+        self.training_data_acc.append(epoch_results[1])
+        self.testing_data_loss.append(epoch_results[2])
+        self.testing_data_acc.append(epoch_results[3])
+
+    def metric_gradient(self, x: list, batch = 20):
+        data = x[-batch:]
+        return round((data[-1] - data[0])/len(data),2)
+
+    def log_gradients(self):
+        logging.info(f'Training Data Loss Gradient = {self.metric_gradient(self.training_data_loss)}\n \
+                    Training Data Accuracy Gradient = {self.metric_gradient(self.training_data_acc)}\n \
+                    Testing Data Loss Gradient = {self.metric_gradient(self.testing_data_loss)}\n \
+                    Testing Data Accuracy Gradient = {self.metric_gradient(self.testing_data_acc)}\n')

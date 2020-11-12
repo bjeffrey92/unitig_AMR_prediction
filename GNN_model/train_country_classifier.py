@@ -11,7 +11,7 @@ import torch.optim as optim
 from GNN_model.utils import load_training_data, load_testing_data, \
                          load_adjacency_matrix, load_countries, save_model, \
                          write_epoch_results, DataGenerator, \
-                         country_accuracy
+                         country_accuracy, MetricAccumulator
 from GNN_model.models import GCNCountry
 from GNN_model.train import epoch_, train, test
 
@@ -46,12 +46,17 @@ def main():
                         weight_decay = 5e-4)
     loss_function = nn.CrossEntropyLoss()
 
+    training_metrics = MetricAccumulator() 
+
     start_time = time.time()
     for epoch in range(500):
         epoch += 1
         model, epoch_results = train(training_data, model, 
                                 optimizer, adj, epoch, loss_function, 
                                 country_accuracy, testing_data)
+        training_metrics.add(epoch_results)
+        if epoch >= 20:
+            training_metrics.log_gradients()
         write_epoch_results(epoch, epoch_results, 'country_classifier.tsv')
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
