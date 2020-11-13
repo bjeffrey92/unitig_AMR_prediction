@@ -110,24 +110,55 @@ class DataGenerator():
             {i:self.features[i] for i in self._index}.values())
 
 class MetricAccumulator():
-    def __init__(self):
+    def __init__(self, gradient_batch = None):
         self.training_data_loss = []
         self.training_data_acc = []
         self.testing_data_loss = []
         self.testing_data_acc = []
+        self.training_data_loss_grads = []
+        self.training_data_acc_grads = []
+        self.testing_data_loss_grads = []
+        self.testing_data_acc_grads = []
+        if gradient_batch:
+            self.gradient_batch = gradient_batch
+        else:
+            self.gradient_batch = 20
 
     def add(self, epoch_results):
         self.training_data_loss.append(epoch_results[0])
         self.training_data_acc.append(epoch_results[1])
         self.testing_data_loss.append(epoch_results[2])
         self.testing_data_acc.append(epoch_results[3])
+        self._all_grads()
 
-    def metric_gradient(self, x: list, batch = 20):
+    def _all_grads(self):
+        self.training_data_loss_grads.append(
+            self.metric_gradient(self.training_data_loss))
+        self.training_data_acc_grads.append(
+            self.metric_gradient(self.training_data_acc))
+        self.testing_data_loss_grads.append(
+            self.metric_gradient(self.testing_data_loss))
+        self.testing_data_acc_grads.append(
+            self.metric_gradient(self.testing_data_acc))
+
+    def metric_gradient(self, x: list):
+        batch = self.gradient_batch
         data = x[-batch:]
         return round((data[-1] - data[0])/len(data),2)
 
-    def log_gradients(self):
-        logging.info(f'Training Data Loss Gradient = {self.metric_gradient(self.training_data_loss)}\n \
-                    Training Data Accuracy Gradient = {self.metric_gradient(self.training_data_acc)}\n \
-                    Testing Data Loss Gradient = {self.metric_gradient(self.testing_data_loss)}\n \
-                    Testing Data Accuracy Gradient = {self.metric_gradient(self.testing_data_acc)}\n')
+    def avg_gradient(self, x: list):
+        batch = self.gradient_batch
+        data = x[-batch:]
+        return sum(data)/len(data)
+
+    def log_gradients(self, epoch):
+        avg_grads = [self.avg_gradient(self.training_data_loss_grads),
+                    self.avg_gradient(self.training_data_acc_grads),
+                    self.avg_gradient(self.testing_data_loss_grads),
+                    self.avg_gradient(self.testing_data_acc_grads)]
+        logging.info(
+            f'Average Gradient Between Epoch {epoch} and {max(0, epoch - self.gradient_batch)}:\n \
+            Training Data Loss Gradient = {avg_grads[0]}\n \
+            Training Data Accuracy Gradient = {avg_grads[1]}\n \
+            Testing Data Loss Gradient = {avg_grads[2]}\n \
+            Testing Data Accuracy Gradient = {avg_grads[3]}\n')

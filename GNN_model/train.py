@@ -10,8 +10,9 @@ import torch.nn as nn
 import torch.optim as optim
 
 from GNN_model.utils import load_training_data, load_testing_data, \
-                         load_adjacency_matrix, save_model, accuracy,\
-                         logcosh, write_epoch_results, DataGenerator
+                            load_adjacency_matrix, save_model, accuracy,\
+                            logcosh, write_epoch_results, DataGenerator, \
+                            MetricAccumulator
 from GNN_model.models import GCN, GCNPerNode, VanillaNN
 
 
@@ -186,11 +187,15 @@ def main(args):
 
     optimizer = optim.Adam(model.parameters(), lr = args.lr, 
                         weight_decay = args.weight_decay)
-    loss_function = nn.MSELoss()
+    loss_function = logcosh
+
+    #records training metrics and logs the gradient after each epoch
+    training_metrics = MetricAccumulator() 
 
     start_time = time.time()
     for epoch in range(args.epoch):
         epoch += 1
+        
         if args.batch_size:
             #parameters tuned per batch
             model, epoch_results = batch_train(training_data, model, 
@@ -202,7 +207,12 @@ def main(args):
             model, epoch_results = train(training_data, model, 
                                     optimizer, adj, epoch, loss_function, 
                                     accuracy, testing_data)
+        
+        training_metrics.add(epoch_results)
+        if epoch >= 20:
+            training_metrics.log_gradients(epoch)
         write_epoch_results(epoch, epoch_results, args.summary_file)
+    
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
 

@@ -56,7 +56,7 @@ def main():
                                 country_accuracy, testing_data)
         training_metrics.add(epoch_results)
         if epoch >= 20:
-            training_metrics.log_gradients()
+            training_metrics.log_gradients(epoch)
         write_epoch_results(epoch, epoch_results, 'country_classifier.tsv')
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
