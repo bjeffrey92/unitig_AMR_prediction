@@ -70,7 +70,8 @@ def logcosh(true, pred):
     return torch.sum(loss)
 
 class DataGenerator():
-    def __init__(self, features, labels, auto_reset_generator = True):
+    def __init__(self, features, labels, countries = None, 
+                auto_reset_generator = True):
         assert len(features) == len(labels), \
             'Features and labels are of different length'
         self.features = self._parse_features(features)
@@ -80,6 +81,10 @@ class DataGenerator():
         self.n = 0
         self._index = list(range(self.n_samples))
         self.auto_reset_generator = auto_reset_generator
+        if countries is not None:
+            assert len(countries) == len(labels), \
+                'Countries and labels are of different length'
+            self.countries = countries
 
     def _parse_features(self, features):
         l = [None] * len(features)
@@ -90,11 +95,17 @@ class DataGenerator():
     def _iterate(self):
         self.n += 1
         if self.n == self.n_samples and self.auto_reset_generator:
-            sample = self.features[self.n - 1], self.labels[self.n - 1]
+            if self.countries is not None:
+                sample = self.features[self.n - 1], self.labels[self.n - 1], self.countries[self.n - 1]
+            else: 
+                sample = self.features[self.n - 1], self.labels[self.n - 1]
             self.reset_generator()
             yield sample
         else:
-            yield self.features[self.n - 1], self.labels[self.n - 1]
+            if self.countries is not None:
+                yield self.features[self.n - 1], self.labels[self.n - 1], self.countries[self.n - 1]
+            else:
+                yield self.features[self.n - 1], self.labels[self.n - 1]
 
     def next_sample(self):
         return next(self._iterate())
@@ -108,6 +119,9 @@ class DataGenerator():
                         {i:self.labels[i] for i in self._index}.values()))
         self.features = list(
             {i:self.features[i] for i in self._index}.values())
+        if self.countries is not None:
+            self.countries = torch.tensor(list(
+                        {i:self.countries[i] for i in self._index}.values()))
 
 class MetricAccumulator():
     def __init__(self, gradient_batch = None):
