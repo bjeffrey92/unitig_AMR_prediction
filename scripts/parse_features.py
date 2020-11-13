@@ -96,6 +96,7 @@ def split_training_and_testing(rtab_file,
         testing_rows = [header[:1] + header_array[testing_indices].tolist()] + \
             ([[None] * (testing_n + 1)] * num_unitigs)
 
+        included_unitigs = [None] * num_unitigs
         i = 1
         j = 1
         for row in reader:
@@ -107,6 +108,7 @@ def split_training_and_testing(rtab_file,
             frequency = sum([1 for i in row[1:] if i == '1'])/len(row[1:])
             if frequency < freq_filt[0] or frequency > freq_filt[1]: continue #only include intermediate frequency unitigs
 
+            included_unitigs[i-1] = row[0]
             row_array = np.array(row)
             training_rows[i] = row[:1] + row_array[training_indices].tolist()
             testing_rows[i] = row[:1] + row_array[testing_indices].tolist()
@@ -125,6 +127,7 @@ def split_training_and_testing(rtab_file,
         for row in testing_rows[:i]:
             writer.writerow(row)
 
+    return [i for i in included_unitigs if i is not None]
 
 def load_features(rtab_file):
     '''
@@ -250,11 +253,13 @@ if __name__ == '__main__':
         testing_rtab_file = b.name
 
         if countries:
-            split_training_and_testing(rtab_file, metadata.index, 
+            included_unitigs = split_training_and_testing(rtab_file, 
+                                        metadata.index, 
                                         training_rtab_file, testing_rtab_file,
                                         metadata, country_split = True)
         else:
-            split_training_and_testing(rtab_file, metadata.index, 
+            included_unitigs = split_training_and_testing(rtab_file, 
+                                        metadata.index, 
                                         training_rtab_file, testing_rtab_file)
 
         #reads in rtab as sparse feature tensor
