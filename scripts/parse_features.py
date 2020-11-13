@@ -197,6 +197,18 @@ def load_countries(metadata, countries):
     return torch.stack(metadata.Country.apply(parse_country).to_list())
 
 
+def load_families(metadata, families):
+    family_tensors = {}
+    for i in families:
+        family_tensors[i] = \
+            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) for x in families])
+
+    def parse_family(family):
+        return family_tensors[family]
+
+    return torch.stack(metadata.Family.apply(parse_family).to_list())
+    
+
 def save_data(out_dir, training_features, testing_features, 
                 training_labels, testing_labels, 
                 training_countries = None, testing_countries = None):
