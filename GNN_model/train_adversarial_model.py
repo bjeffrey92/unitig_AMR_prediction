@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from GNN_model.utils import load_training_data, load_testing_data, \
-                        load_adjacency_matrix, load_countries, save_model, \
+                        load_adjacency_matrix, load_labels_2, save_model, \
                         write_epoch_results, DataGenerator, logcosh, \
                         accuracy, country_accuracy, MetricAccumulator
 from GNN_model.adversarial_model import MICPredictor, Adversary
@@ -18,18 +18,19 @@ logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
 
-def load_data(data_dir):
+def load_data(data_dir, countries = True, families = False):
     adj = load_adjacency_matrix(data_dir)
     training_features, training_labels = load_training_data(data_dir)
     testing_features, testing_labels = load_testing_data(data_dir)
-    training_countries, testing_countries = load_countries(data_dir)
+    training_labels_2, testing_labels_2 = load_labels_2(data_dir, 
+                                                        countries, families)
     assert training_features.shape[1] == testing_features.shape[1], \
         'Dimensions of training and testing data not equal'
     
     training_data = DataGenerator(training_features, training_labels, 
-                                training_countries)
+                                training_labels_2)
     testing_data = DataGenerator(testing_features, testing_labels, 
-                                testing_countries)
+                                testing_labels_2)
 
     return training_data, testing_data, adj
 
@@ -84,7 +85,7 @@ def pre_train_predictor(predictor, pred_optimizer, pred_loss,
             f'\tTraining Data Loss = {loss_train}\n' + \
             f'\tTraining Data Accuracy = {acc_train}\n'
             f'\tTesting Data Loss = {loss_test}\n' + \
-            f'\tTesting Data Accuracy = {acc_test}\n'
+            f'\tTesting Data Accuracy = {acc_test}'
             )
 
     return predictor, (loss_train, acc_train, loss_test, acc_test)
@@ -103,12 +104,12 @@ def pre_train_adversary(predictor, adversary, adv_optimizer, adv_loss,
     
     adv_outputs = epoch_(training_data, adj, predictor, adversary)[1]
     
-    loss_train = adv_loss(adv_outputs, training_data.countries)
-    acc_train = country_accuracy(adv_outputs, training_data.countries)
+    loss_train = adv_loss(adv_outputs, training_data.labels_2)
+    acc_train = country_accuracy(adv_outputs, training_data.labels_2)
 
     if testing_data:
         loss_test, acc_test = test(testing_data, adj, adv_loss, 
-                                accuracy, predictor, adversary)
+                                country_accuracy, predictor, adversary)
     else:
         loss_test = 'N/A'
         acc_test = 'N/A'
@@ -123,7 +124,7 @@ def pre_train_adversary(predictor, adversary, adv_optimizer, adv_loss,
                 f'\tPredictor Training Loss = {loss_train}\n' + \
                 f'\tPredictor Training Accuracy = {acc_train}\n'
                 f'\tAdversary Training Loss = {loss_train}\n' + \
-                f'\tAdversary Training Acc = {acc_train}\n'
+                f'\tAdversary Training Acc = {acc_train}'
                 )
 
     return adversary, (loss_train, acc_train, loss_train, acc_train)
@@ -133,13 +134,12 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
     data.reset_generator()
     predictor.train(False)
     
+    output = epoch_(data, adj, predictor, adversary)
     if adversary is not None:
         adversary.train(False)
-        output = epoch_(data, adj, predictor, adversary)[1]
-        loss = float(loss_function(output, data.countries))
-        acc = accuracy(output, data.countries)
+        loss = float(loss_function(output[1], data.labels_2))
+        acc = accuracy(output[1], data.labels_2)
     else:
-        output = epoch_(data, adj, predictor)[0]
         loss = float(loss_function(output, data.labels))
         acc = accuracy(output, data.labels)
 
@@ -149,7 +149,9 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
 def main():
     data_dir =  'data/model_inputs/country_normalised/log2_azm_mic/'
 
-    training_data, testing_data, adj = load_data(data_dir)
+    training_data, testing_data, adj = load_data(data_dir, 
+                                                countries = True, 
+                                                families = False)
 
     predictor = MICPredictor(n_feat = training_data.n_nodes,
                             n_hid_1 = 50, 
@@ -159,7 +161,7 @@ def main():
                             dropout = 0.5)    
     adversary = Adversary(n_feat = 20,
                         n_hid = 20, 
-                        out_dim = max(training_data.countries.tolist()) + 1)
+                        out_dim = max(training_data.labels_2.tolist()) + 1)
     
     pred_optimizer = optim.Adam(predictor.parameters(), lr = 0.0001,
                                 weight_decay = 5e-3)
@@ -170,7 +172,9 @@ def main():
 
     #pretraining predictor
     training_metrics = MetricAccumulator()
-    for epoch in range(100):
+    for param in predictor.parameters():
+        param.requires_grad = True
+    for epoch in range(60):
         epoch += 1
         predictor, epoch_results = pre_train_predictor(predictor, 
                                                         pred_optimizer, 
@@ -186,7 +190,7 @@ def main():
     training_metrics = MetricAccumulator()
     for param in predictor.parameters():
         param.requires_grad = False #gradient only calculated over adversary network
-    for epoch in range(100):
+    for epoch in range(60):
         epoch += 1
         adversary, epoch_results = pre_train_adversary(predictor, 
                                                     adversary, 

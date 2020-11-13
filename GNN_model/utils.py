@@ -22,21 +22,29 @@ def load_adjacency_matrix(data_dir):
     adj = torch.load(os.path.join(data_dir, 'unitig_adjacency_tensor.pt'))
     return adj
 
-def load_countries(data_dir):
-    training_countries = torch.load(os.path.join(data_dir, 
-                                                'training_countries.pt'))
-    testing_countries = torch.load(os.path.join(data_dir, 
-                                                'testing_countries.pt'))
-    def transform(countries):
-        countries = countries.tolist()
-        c_index =  countries.index(max(countries))
+def load_labels_2(data_dir, countries = True, families = False):
+    
+    if countries == families:
+        raise ValueError('One of countries OR families must be true')
+    elif countries:
+        name = 'countries'
+    else:
+        name = 'families'
+
+    training_labels_2 = torch.load(os.path.join(data_dir, 
+                                                f'training_{name}.pt'))
+    testing_labels_2 = torch.load(os.path.join(data_dir, 
+                                                f'testing_{name}.pt'))
+    def transform(labels_2):
+        labels_2 = labels_2.tolist()
+        c_index =  labels_2.index(max(labels_2))
         return torch.LongTensor([c_index])
     
-    training_countries = torch.cat(
-                            list(map(transform, training_countries.unbind(0))))
-    testing_countries = torch.cat(
-                            list(map(transform, testing_countries.unbind(0))))
-    return training_countries, testing_countries
+    training_labels_2 = torch.cat(
+                            list(map(transform, training_labels_2.unbind(0))))
+    testing_labels_2 = torch.cat(
+                            list(map(transform, testing_labels_2.unbind(0))))
+    return training_labels_2, testing_labels_2
 
 def write_epoch_results(epoch, epoch_results, summary_file):
     if not os.path.isfile(summary_file):
@@ -70,7 +78,7 @@ def logcosh(true, pred):
     return torch.sum(loss)
 
 class DataGenerator():
-    def __init__(self, features, labels, countries = None, 
+    def __init__(self, features, labels, labels_2 = None, 
                 auto_reset_generator = True):
         assert len(features) == len(labels), \
             'Features and labels are of different length'
@@ -81,10 +89,10 @@ class DataGenerator():
         self.n = 0
         self._index = list(range(self.n_samples))
         self.auto_reset_generator = auto_reset_generator
-        if countries is not None:
-            assert len(countries) == len(labels), \
-                'Countries and labels are of different length'
-            self.countries = countries
+        if labels_2 is not None:
+            assert len(labels_2) == len(labels), \
+                'labels_2 and labels are of different length'
+            self.labels_2 = labels_2
 
     def _parse_features(self, features):
         l = [None] * len(features)
@@ -95,15 +103,17 @@ class DataGenerator():
     def _iterate(self):
         self.n += 1
         if self.n == self.n_samples and self.auto_reset_generator:
-            if self.countries is not None:
-                sample = self.features[self.n - 1], self.labels[self.n - 1], self.countries[self.n - 1]
+            if self.labels_2 is not None:
+                sample = self.features[self.n - 1], self.labels[self.n - 1], \
+                    self.labels_2[self.n - 1]
             else: 
                 sample = self.features[self.n - 1], self.labels[self.n - 1]
             self.reset_generator()
             yield sample
         else:
-            if self.countries is not None:
-                yield self.features[self.n - 1], self.labels[self.n - 1], self.countries[self.n - 1]
+            if self.labels_2 is not None:
+                yield self.features[self.n - 1], self.labels[self.n - 1], \
+                    self.labels_2[self.n - 1]
             else:
                 yield self.features[self.n - 1], self.labels[self.n - 1]
 
@@ -119,9 +129,9 @@ class DataGenerator():
                         {i:self.labels[i] for i in self._index}.values()))
         self.features = list(
             {i:self.features[i] for i in self._index}.values())
-        if self.countries is not None:
-            self.countries = torch.tensor(list(
-                        {i:self.countries[i] for i in self._index}.values()))
+        if self.labels_2 is not None:
+            self.labels_2 = torch.tensor(list(
+                        {i:self.labels_2[i] for i in self._index}.values()))
 
 class MetricAccumulator():
     def __init__(self, gradient_batch = None):
@@ -170,9 +180,10 @@ class MetricAccumulator():
                     self.avg_gradient(self.training_data_acc_grads),
                     self.avg_gradient(self.testing_data_loss_grads),
                     self.avg_gradient(self.testing_data_acc_grads)]
+        last_epoch = max(0, epoch - self.gradient_batch)
         logging.info(
-            f'Average Gradient Between Epoch {epoch} and {max(0, epoch - self.gradient_batch)}:\n \
+            f'Average Gradient Between Epoch {epoch} and {last_epoch}:\n \
             Training Data Loss Gradient = {avg_grads[0]}\n \
             Training Data Accuracy Gradient = {avg_grads[1]}\n \
             Testing Data Loss Gradient = {avg_grads[2]}\n \
-            Testing Data Accuracy Gradient = {avg_grads[3]}\n')
+            Testing Data Accuracy Gradient = {avg_grads[3]}')
