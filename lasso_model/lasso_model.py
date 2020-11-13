@@ -34,13 +34,13 @@ def CV(training_features, training_labels,
                 reg = Lasso(alpha = a, random_state = 0, max_iter = max_iter)
                 reg.fit(training_features, training_labels)
                 
-                if w and issubclass(w[0].category, ConvergenceWarning):
-                    logging.warning(f'Failed to converge with max_iter = {max_iter}, adding 1000 more')
-                    max_iter += 1000
-                elif len(w) > 1:
+                if len(w) > 1:
                     for warning in w:
                         logging.error(warning.category)
                     raise Exception
+                elif w and issubclass(w[0].category, ConvergenceWarning):
+                    logging.warning(f'Failed to converge with max_iter = {max_iter}, adding 1000 more')
+                    max_iter += 1000
                 else:
                     fitted = True
 
