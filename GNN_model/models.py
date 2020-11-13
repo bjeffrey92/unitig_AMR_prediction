@@ -32,7 +32,8 @@ class GCNPerNode(nn.Module):
 
         self.gc = GraphConvolutionPerNode(n_feat, n_hid_1)
         self.linear1 = nn.Linear(n_hid_1, n_hid_2)
-        self.linear2 = nn.Linear(n_hid_2, out_dim)
+        self.linear2 = nn.Linear(n_hid_2, n_hid_3)
+        self.linear3 = nn.Linear(n_hid_3, out_dim)
         self.dropout = dropout
 
     def forward(self, x, adj):
@@ -40,7 +41,9 @@ class GCNPerNode(nn.Module):
         # F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.linear1(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = F.sigmoid(self.linear2(x)[0][0])
+        x = F.leaky_relu(self.linear2(x))
+        F.dropout(x, self.dropout, inplace = True, training = True)
+        out = self.linear3(x)[0][0]
         return out
 
 
