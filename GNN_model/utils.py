@@ -92,7 +92,7 @@ class DataGenerator():
         if labels_2 is not None:
             assert len(labels_2) == len(labels), \
                 'labels_2 and labels are of different length'
-            self.labels_2 = labels_2
+        self.labels_2 = labels_2
 
     def _parse_features(self, features):
         l = [None] * len(features)
@@ -134,7 +134,7 @@ class DataGenerator():
                         {i:self.labels_2[i] for i in self._index}.values()))
 
 class MetricAccumulator():
-    def __init__(self, gradient_batch = None):
+    def __init__(self, gradient_batch = 20):
         self.training_data_loss = []
         self.training_data_acc = []
         self.testing_data_loss = []
@@ -143,10 +143,7 @@ class MetricAccumulator():
         self.training_data_acc_grads = []
         self.testing_data_loss_grads = []
         self.testing_data_acc_grads = []
-        if gradient_batch:
-            self.gradient_batch = gradient_batch
-        else:
-            self.gradient_batch = 20
+        self.gradient_batch = gradient_batch
 
     def add(self, epoch_results):
         self.training_data_loss.append(epoch_results[0])
