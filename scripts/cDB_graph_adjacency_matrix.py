@@ -118,6 +118,7 @@ if __name__ == '__main__':
             nbr_pos = unitig_order.index(nbr)
             adj_matrix[unitig_pos, nbr_pos] = 1
             adj_matrix[nbr_pos, unitig_pos] = 1 
+        adj_matrix[unitig_pos, unitig_pos] = 1 #equivalent to adding identity matrix
 
     logging.info('Converting adjacency matrix to sparse tensor')
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
