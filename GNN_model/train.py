@@ -4,6 +4,7 @@ import argparse
 import time
 import logging
 import math
+import os
 
 import torch
 import torch.nn as nn
@@ -167,6 +168,55 @@ def parse_args():
                         If left blank logging will be printed to stdout only.')
 
     return parser.parse_args()
+
+
+def train_multiple():
+    root_dir = 'data/model_inputs/family_normalised/'
+
+    Abs = ['log2_azm_mic',
+        'log2_cip_mic',
+        'log2_cro_mic',
+        'log2_cfx_mic']
+
+    for Ab in Abs:
+        data_dir = os.path.join(root_dir, Ab)
+
+        training_data, testing_data, adj = load_data(data_dir)
+
+        model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50,
+                    n_hid_2 = 50, n_hid_3 = 20, out_dim = 1, dropout = 0.5)
+
+        optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
+                        weight_decay = 5e-4)
+        loss_function = logcosh
+
+        summary_file = Ab + '_epoch_results.tsv'
+
+        #records training metrics and logs the gradient after each epoch
+        training_metrics = MetricAccumulator() 
+
+        start_time = time.time()
+        for epoch in range(300):
+            epoch += 1
+            
+
+            model, epoch_results = train(training_data, model, 
+                                        optimizer, adj, epoch, loss_function, 
+                                        accuracy, testing_data)
+            
+            training_metrics.add(epoch_results)
+            if epoch >= 20:
+                training_metrics.log_gradients(epoch)
+            write_epoch_results(epoch, epoch_results, summary_file)
+        
+            if len([i for i in training_metrics.training_data_acc_grads[-10:] \
+                 if i < 0.1]) >= 10 and epoch > 50:
+                logging.info('Gradient of training data accuracy appears to have plateaued, terminating early')
+                break
+
+        logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
+
+        torch.save(model, Ab + '_fitted_GNN.pt')
 
 
 def main(args):
