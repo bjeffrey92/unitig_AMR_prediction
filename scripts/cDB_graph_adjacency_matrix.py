@@ -108,8 +108,9 @@ if __name__ == '__main__':
 
     dims = len(unitig_adjacency)
     adj_matrix = sparse.dok_matrix((dims, dims)) #empty sparse matrix 
+    deg_matrix = sparse.dok_matrix((dims, dims)) #empty degree matrix 
 
-    logging.info('Constructing sparse adjacency matrix')
+    logging.info('Constructing sparse adjacency matrix and sparse degree matrix')
     #fill in sparse matrix
     unitig_order = list(unitig_adjacency.keys())
     for unitig, neighbours in unitig_adjacency.items():
@@ -119,6 +120,7 @@ if __name__ == '__main__':
             adj_matrix[unitig_pos, nbr_pos] = 1
             adj_matrix[nbr_pos, unitig_pos] = 1 
         adj_matrix[unitig_pos, unitig_pos] = 1 #equivalent to adding identity matrix
+        deg_matrix[unitig_pos, unitig_pos] = len(neighbours)
 
     logging.info('Converting adjacency matrix to sparse tensor')
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
