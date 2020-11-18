@@ -1,15 +1,65 @@
-import pandas as pd
+import sys
+import logging
 import csv
-import numpy as np
+import pandas as pd
+import tempfile
 import torch
 import os
-import logging
-import sys
-import tempfile
+import numpy as np
+import networkx as nx
 from itertools import compress
+from torch_sparse import SparseTensor
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
+
+
+def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict):
+    unitig_ids = {}    
+    G = nx.Graph()
+
+    # Add nodes first
+    node_list = []
+    with open(nodes_file, 'r') as node_file:
+        for node in node_file:
+            (node_id, node_seq) = node.rstrip().split("\t")
+            if node_id in mapping_dict:
+                node_list.append((int(node_id), 
+                                    dict(seq=node_seq, 
+                                    seq_len=len(node_seq))))
+                unitig_ids[node_seq] = node_id
+    G.add_nodes_from(node_list)
+
+    # add edges
+    edge_list = []
+    with open(edges_file, 'r') as edge_file:
+        for edge in edge_file:
+            (start, end, label) = edge.rstrip().split("\t")
+            if start in mapping_dict and end in mapping_dict:
+                edge_list.append((int(start), int(end)))
+
+    G.add_edges_from(edge_list)
+
+    adj_matrix = nx.adjacency_matrix(G)
+
+    return adj_matrix
+
+
+def convert_to_tensor(matrix, torch_sparse_coo = True):
+    
+    shape = matrix.shape
+    
+    row = torch.LongTensor(matrix.row)
+    col = torch.LongTensor(matrix.col)
+    value = torch.Tensor(matrix.data)
+    
+    sparse_tensor = SparseTensor(row = row, col = col, 
+                        value = value, sparse_sizes = shape)
+
+    if torch_sparse_coo:
+        return sparse_tensor.to_torch_sparse_coo_tensor()
+    else:
+        return sparse_tensor
 
 
 def parse_metadata(metadata_file, rtab_file, outcome_column):
@@ -92,7 +142,6 @@ def split_training_and_testing(rtab_file,
         testing_rows = [header[:1] + header_array[testing_indices].tolist()] + \
             ([[None] * (testing_n + 1)] * num_unitigs)
 
-        included_unitigs = [None] * num_unitigs
         i = 1
         j = 1
         for row in reader:
@@ -104,7 +153,6 @@ def split_training_and_testing(rtab_file,
             frequency = sum([1 for i in row[1:] if i == '1'])/len(row[1:])
             if frequency < freq_filt[0] or frequency > freq_filt[1]: continue #only include intermediate frequency unitigs
 
-            included_unitigs[i-1] = row[0]
             row_array = np.array(row)
             training_rows[i] = row[:1] + row_array[training_indices].tolist()
             testing_rows[i] = row[:1] + row_array[testing_indices].tolist()
@@ -123,7 +171,6 @@ def split_training_and_testing(rtab_file,
         for row in testing_rows[:i]:
             writer.writerow(row)
 
-    return [i for i in included_unitigs if i is not None]
 
 def load_features(rtab_file, mapping_dict):
     '''
@@ -193,7 +240,8 @@ def load_countries(metadata, countries):
     country_tensors = {}
     for i in countries:
         country_tensors[i] = \
-            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) for x in countries])
+            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) \
+                                                    for x in countries])
 
     def parse_country(country):
         return country_tensors[country]
@@ -214,13 +262,15 @@ def load_families(metadata, families):
     
 
 def save_data(out_dir, training_features, testing_features, 
-                training_labels, testing_labels, 
+                training_labels, testing_labels, adjacency_matrix,
                 training_countries = None, testing_countries = None):
     
     torch.save(training_features, os.path.join(out_dir, 'training_features.pt'))
     torch.save(testing_features, os.path.join(out_dir, 'testing_features.pt'))
     torch.save(training_labels, os.path.join(out_dir, 'training_labels.pt'))
     torch.save(testing_labels, os.path.join(out_dir, 'testing_labels.pt'))
+    torch.save(adjacency_matrix, os.path.join(out_dir, 
+                                            'unitig_adjacency_tensor.pt'))
 
     if training_countries is not None:
         torch.save(training_countries, 
@@ -230,59 +280,86 @@ def save_data(out_dir, training_features, testing_features,
                 os.path.join(out_dir, 'testing_countries.pt'))
 
 
-
 if __name__ == '__main__':
 
-    rtab_file = 'data/gonno_unitigs/unitigs.unique_rows.Rtab'
+    edges_file = 'data/gonno_unitigs/graph.edges.dbg'
+    nodes_file = 'data/gonno_unitigs/graph.nodes'
+    unique_rows_file = 'data/gonno_unitigs/unitigs.unique_rows_to_all_rows.txt'
+    rtab_file = 'data/gonno_unitigs/unitigs.unique_rows.Rtab' #to filter unitigs based on frequency
     metadata_file = 'data/metadata.csv'
-    # metadata_file = 'data/country_normalised_metadata.csv'
-    outcome_column = 'log2_cip_mic'
+    outcome_columns = ['log2_azm_mic', 'log2_cfx_mic', 
+                    'log2_cip_mic', 'log2_cro_mic']
 
-    #maps entries in rtab to metadata
-    metadata = parse_metadata(metadata_file, rtab_file, outcome_column)
+    logging.info('Mapping pattern ids to graph nodes')
+    #dicts will contain all intermediate frequency graph nodes mapped to their pattern id
+    node_to_pattern_id = {}
+    pattern_id_to_node = {}
+    with open(unique_rows_file, 'r') as a:
+        reader = csv.reader(a, delimiter = ' ')
+        for row in reader:
+            for node in row[2:-1]:
+                node_to_pattern_id[node] = row[0]
+            pattern_id_to_node[row[0]] = row[2:-1]
 
-    #alphabetical list of countries
-    # countries = metadata.Country.unique()
-    # countries.sort()
-    # countries = countries.tolist()
-    
-    #if don't wish to specify countries
-    countries = []
+    logging.info('Constructing graph adjacency matrix')
+    adj_matrix = parse_graph_adj_matrix(edges_file, nodes_file, 
+                                        node_to_pattern_id)
+    adj_tensor = convert_to_tensor(adj_matrix.tocoo())
 
-    with tempfile.NamedTemporaryFile() as a, tempfile.NamedTemporaryFile() as b:
-        training_rtab_file = a.name
-        testing_rtab_file = b.name
+    for outcome_column in outcome_columns:
+        metadata = parse_metadata(metadata_file, rtab_file, outcome_column) #to know which files to include
 
+        #alphabetical list of countries
+        # countries = metadata.Country.unique()
+        # countries.sort()
+        # countries = countries.tolist()
+        
+        #if don't wish to specify countries
+        countries = []
+
+        with tempfile.NamedTemporaryFile() as a, \
+                tempfile.NamedTemporaryFile() as b:
+            training_rtab_file = a.name
+            testing_rtab_file = b.name
+
+            if countries:
+                split_training_and_testing(rtab_file, 
+                                            metadata.index, 
+                                            training_rtab_file, 
+                                            testing_rtab_file,
+                                            metadata, 
+                                            country_split = True,
+                                            freq_filt = (0.05, 0.95))
+            else:
+                split_training_and_testing(rtab_file, 
+                                            metadata.index, 
+                                            training_rtab_file, 
+                                            testing_rtab_file,
+                                            freq_filt = (0.05, 0.95))
+
+            #reads in rtab as sparse feature tensor
+            training_features = load_features(training_rtab_file, 
+                                            pattern_id_to_node)
+            testing_features = load_features(testing_rtab_file,
+                                            pattern_id_to_node)
+
+            #ensure metadata is in same order as features for label extraction
+            training_metadata = order_metadata(metadata, training_rtab_file)
+            testing_metadata = order_metadata(metadata, testing_rtab_file)
+
+        #parse training and testing labels as tensors
+        training_labels = load_labels(training_metadata, outcome_column)
+        testing_labels = load_labels(testing_metadata, outcome_column)
+
+        #countries of training and testing data as tensor of 1 and 0
         if countries:
-            included_unitigs = split_training_and_testing(rtab_file, 
-                                        metadata.index, 
-                                        training_rtab_file, testing_rtab_file,
-                                        metadata, country_split = True)
+            training_countries = load_countries(training_metadata, countries)
+            testing_countries = load_countries(testing_metadata, countries)
         else:
-            included_unitigs = split_training_and_testing(rtab_file, 
-                                        metadata.index, 
-                                        training_rtab_file, testing_rtab_file)
+            training_countries = None
+            testing_countries = None
 
-        #reads in rtab as sparse feature tensor
-        training_features = load_features(training_rtab_file)
-        testing_features = load_features(testing_rtab_file)
-
-        #ensure metadata is in same order as features for label extraction
-        training_metadata = order_metadata(metadata, training_rtab_file)
-        testing_metadata = order_metadata(metadata, testing_rtab_file)
-
-    #parse training and testing labels as tensors
-    training_labels = load_labels(training_metadata, outcome_column)
-    testing_labels = load_labels(testing_metadata, outcome_column)
-
-    #countries of training and testing data as tensor of 1 and 0
-    if countries:
-        training_countries = load_countries(training_metadata, countries)
-        testing_countries = load_countries(testing_metadata, countries)
-    else:
-        training_countries = None
-        testing_countries = None
-
-    out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
-    save_data(out_dir, training_features, testing_features, training_labels, 
-                testing_labels, training_countries, testing_countries)
+        out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
+        save_data(out_dir, training_features, testing_features, training_labels, 
+                    testing_labels, adj_tensor, 
+                    training_countries, testing_countries)
