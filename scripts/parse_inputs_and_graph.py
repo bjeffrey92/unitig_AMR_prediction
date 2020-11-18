@@ -15,6 +15,7 @@ logging.root.setLevel(logging.INFO)
 
 
 def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict):
+
     unitig_ids = {}    
     G = nx.Graph()
 
@@ -221,6 +222,57 @@ def load_features(rtab_file, mapping_dict):
     return features
 
 
+def filter_unitigs(training_features, testing_features, adj):
+    '''
+    Removes features which are all 0 because they were filtered out and 
+    transforms adjacency matrix so it has the correct dimensionality 
+    '''
+
+    training_features_trans = training_features.to_dense().transpose(0,1)
+    testing_features_trans = testing_features.to_dense().transpose(0,1)
+    
+    #create list of every feature which is represented at least once
+    present_unitigs = []
+    for i in range(len(testing_features_trans)):
+        if testing_features_trans[i].tolist().count(1) != 0 and \
+            training_features_trans[i].tolist().count(1) != 0:
+            present_unitigs.append(i)
+
+    #check which indices are in present and map them to new id  
+    adj = adj.coalesce()
+    x_idx = adj.indices()[0].tolist()
+    y_idx = adj.indices()[1].tolist()
+
+    #convert to dataframes to allow merging
+    df = pd.DataFrame({'x':x_idx, 'y':y_idx})
+    present_unitigs_df = pd.DataFrame({'graph_node':present_unitigs,
+                                'unitig_no':list(range(len(present_unitigs)))})
+
+    #sequential merges to map graph nodes to position in the features matrix
+    merged_df = df.merge(present_unitigs_df, left_on = 'x', 
+                        right_on = 'graph_node')[['x', 'y', 'unitig_no']]
+    merged_df = merged_df.merge(present_unitigs_df, left_on = 'y', 
+                                right_on = 'graph_node')
+
+    #build new adjacency tensor
+    indices = torch.FloatTensor([merged_df.unitig_no_x.to_list(), 
+                                  merged_df.unitig_no_y.to_list()])
+    values = [1] * len(indices[0])
+    adj_tensor = torch.sparse_coo_tensor(indices, values)
+
+    #build new feature tensors
+    filtered_training_features = torch.stack([training_features_trans[i] \
+                                                for i in present_unitigs])
+    filtered_testing_features = torch.stack([testing_features_trans[i] \
+                                                for i in present_unitigs])
+    filtered_training_features = \
+            filtered_training_features.transpose(0,1).to_sparse()
+    filtered_testing_features = \
+            filtered_testing_features.transpose(0,1).to_sparse()
+
+    return adj_tensor, filtered_training_features, filtered_testing_features
+
+
 def order_metadata(metadata, rtab_file):
     
     with open(rtab_file, 'r') as a:
@@ -342,6 +394,10 @@ if __name__ == '__main__':
                                             pattern_id_to_node)
             testing_features = load_features(testing_rtab_file,
                                             pattern_id_to_node)
+
+            #removes all unitigs which were filtered out and reshapes adjacency tensor
+            adj_tensor, training_features, testing_features = \
+                 filter_unitigs(training_features, testing_features, adj_tensor)
 
             #ensure metadata is in same order as features for label extraction
             training_metadata = order_metadata(metadata, training_rtab_file)
