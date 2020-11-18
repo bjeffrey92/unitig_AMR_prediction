@@ -19,17 +19,13 @@ def parse_metadata(metadata_file, rtab_file, outcome_column):
     metadata_df = metadata_df.loc[~metadata_df[outcome_column].isna()] 
 
     with open(rtab_file, 'r') as a:
-        reader = csv.reader(a, delimiter = '\t')
+        reader = csv.reader(a, delimiter = ' ')
         input_files = next(reader)[1:]
     
-    assert all([i.endswith('.contigs_velvet') for i in input_files])    
-    accessions = [i.strip('.contigs_velvet') for i in input_files]
-
-    accessions = pd.DataFrame(accessions)
+    accessions = pd.DataFrame(input_files)
     df = metadata_df.merge(accessions, 
                         left_on = 'Sanger_lane', right_on = 0)
     df = df.rename(columns = {0:'Filename'})
-    df['Filename'] = df['Filename'] + '.contigs_velvet' #so can identify relevant inputs in the rtab
 
     diff = len(accessions) - len(df)
     if diff > 0:
@@ -58,7 +54,7 @@ def split_training_and_testing(rtab_file,
 
     #get training and testing data as separate lists
     with open(rtab_file, 'r') as a:
-        reader = csv.reader(a, delimiter = '\t')
+        reader = csv.reader(a, delimiter = ' ')
         header = next(reader)
         filt = [i in files_to_include for i in header] #which to include
         filt[0] = True #add True at start to include pattern_id column
@@ -129,10 +125,13 @@ def split_training_and_testing(rtab_file,
 
     return [i for i in included_unitigs if i is not None]
 
-def load_features(rtab_file):
+def load_features(rtab_file, mapping_dict):
     '''
     parses rtab file as sparse matrix of features
     this was the most memory efficient way i could find to do this
+    params:
+        rtab_file: output of unitig-counter split as training or testing
+        mapping_dict: maps pattern id in rtab file to relevant nodes in the graph
     '''
     num_unitigs = sum(1 for line in open(rtab_file)) - 1
 
@@ -147,11 +146,13 @@ def load_features(rtab_file):
 
         i = 0
         for row in reader:
+            graph_nodes = mapping_dict[row[0]]
             for j in range(1, len(row)): #first element of row is unitig number
                 if row[j] == '1':
-                    x_idx.append(j - 1)
-                    y_idx.append(i)
-                    values.append(1)
+                    for node in graph_nodes:
+                        x_idx.append(j - 1)
+                        y_idx.append(int(node))
+                        values.append(1)
             i += 1
             sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
             sys.stdout.flush()
@@ -159,12 +160,12 @@ def load_features(rtab_file):
         sys.stdout.flush()
 
     indices = torch.LongTensor([x_idx, y_idx])
+    shape = (num_samples, max(y_idx) + 1)
     
     #delete these to free up RAM
     del x_idx
     del y_idx
 
-    shape = (num_samples, num_unitigs)
     values_tensor = torch.FloatTensor(values)
 
     del values
@@ -232,21 +233,21 @@ def save_data(out_dir, training_features, testing_features,
 
 if __name__ == '__main__':
 
-    rtab_file = 'data/gonno_unitigs/gonno.rtab'
-    # metadata_file = 'data/metadata.csv'
-    metadata_file = 'data/country_normalised_metadata.csv'
+    rtab_file = 'data/gonno_unitigs/unitigs.unique_rows.Rtab'
+    metadata_file = 'data/metadata.csv'
+    # metadata_file = 'data/country_normalised_metadata.csv'
     outcome_column = 'log2_cip_mic'
 
     #maps entries in rtab to metadata
     metadata = parse_metadata(metadata_file, rtab_file, outcome_column)
 
     #alphabetical list of countries
-    countries = metadata.Country.unique()
-    countries.sort()
-    countries = countries.tolist()
+    # countries = metadata.Country.unique()
+    # countries.sort()
+    # countries = countries.tolist()
     
     #if don't wish to specify countries
-    # countries = []
+    countries = []
 
     with tempfile.NamedTemporaryFile() as a, tempfile.NamedTemporaryFile() as b:
         training_rtab_file = a.name
@@ -275,9 +276,13 @@ if __name__ == '__main__':
     testing_labels = load_labels(testing_metadata, outcome_column)
 
     #countries of training and testing data as tensor of 1 and 0
-    training_countries = load_countries(training_metadata, countries)
-    testing_countries = load_countries(testing_metadata, countries)
+    if countries:
+        training_countries = load_countries(training_metadata, countries)
+        testing_countries = load_countries(testing_metadata, countries)
+    else:
+        training_countries = None
+        testing_countries = None
 
-    out_dir = os.path.join('data/model_inputs/country_normalised', outcome_column)
+    out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
     save_data(out_dir, training_features, testing_features, training_labels, 
                 testing_labels, training_countries, testing_countries)

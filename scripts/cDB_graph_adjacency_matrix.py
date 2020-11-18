@@ -1,26 +1,20 @@
 import sys
 import logging
 import csv
+import pandas as pd
+from functools import lru_cache
 from itertools import compress
-
-import pyfrost #https://github.com/broadinstitute/pyfrost
 import torch
 import numpy as np
+import networkx as nx
 from torch_sparse import SparseTensor
 from scipy import sparse 
+from bloom_filter import BloomFilter
 
 from scripts.parse_features import parse_metadata
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
-
-def map_nodes(node_list, nodes_dict):    
-    node_uuids = []
-    for n in node_list:
-        try:
-            node_uuids.append(int(nodes_dict[n]) - 1)
-        except KeyError: pass
-    return node_uuids
 
 
 def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
@@ -28,7 +22,7 @@ def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
     num_unitigs = sum(1 for line in open(rtab_file)) - 1
 
     with open(rtab_file, 'r') as a:
-        reader = csv.reader(a, delimiter = '\t')
+        reader = csv.reader(a, delimiter = ' ')
         header = next(reader)
         file_filter = [i in files_to_include for i in header] #which to include
         intermediate_unitigs = []
@@ -47,14 +41,82 @@ def filter_unitigs(rtab_file, files_to_include, filt = (0.01, 0.99)):
     
     return intermediate_unitigs
 
+@lru_cache(maxsize = None)
+def is_intermediate(item: str)-> bool:
+    if item not in intermediate_unitigs_bf:
+        return False
+    else:
+        return item in intermediate_unitigs
 
-def convert_to_tensor(adj_matrix, torch_sparse_coo = True):
+
+def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict):
+    unitig_ids = {}    
+    G = nx.Graph()
+
+    # Add nodes first
+    node_list = []
+    with open(nodes_file, 'r') as node_file:
+        for node in node_file:
+            (node_id, node_seq) = node.rstrip().split("\t")
+            if node_id in mapping_dict:
+                node_list.append((int(node_id), 
+                                    dict(seq=node_seq, 
+                                    seq_len=len(node_seq))))
+                unitig_ids[node_seq] = node_id
+    G.add_nodes_from(node_list)
+
+    # add edges
+    edge_list = []
+    with open(edges_file, 'r') as edge_file:
+        for edge in edge_file:
+            (start, end, label) = edge.rstrip().split("\t")
+            if start in mapping_dict and end in mapping_dict:
+                edge_list.append((int(start), int(end)))
+
+    G.add_edges_from(edge_list)
+
+    adj_matrix = nx.adjacency_matrix(G)
+
+    return adj_matrix
+
+
+def order_adjacency_dict(adjacency_dict):
+    def index(l):
+        l2 = [None] * len(l)
+        l3 = [None] * len(l)
+        j = -1
+        for i in range(len(l)): 
+            if l[i] not in l3: 
+                j += 1 
+            l2[i] = j 
+            l3[i] = l[i] 
+        return l2
+
+    keys = list(adjacency_dict.keys())
+    keys.sort()
+    indexed_keys = index(keys)
+
+    renamed_dict = {}
+    i = 0
+    for k,v in adjacency_dict.items():
+        renamed_values = []
+        for node in v:
+            if node in keys:
+                renamed_node = indexed_keys[keys.index(node)]
+                renamed_values.append(renamed_node)
+        if renamed_values:
+            renamed_dict[indexed_keys[keys.index(k)]] = renamed_values
+
+    return renamed_dict
+
+
+def convert_to_tensor(matrix, torch_sparse_coo = True):
     
-    shape = adj_matrix.shape
+    shape = matrix.shape
     
-    row = torch.LongTensor(adj_matrix.row)
-    col = torch.LongTensor(adj_matrix.col)
-    value = torch.Tensor(adj_matrix.data)
+    row = torch.LongTensor(matrix.row)
+    col = torch.LongTensor(matrix.col)
+    value = torch.Tensor(matrix.data)
     
     sparse_tensor = SparseTensor(row = row, col = col, 
                         value = value, sparse_sizes = shape)
@@ -67,60 +129,74 @@ def convert_to_tensor(adj_matrix, torch_sparse_coo = True):
 
 if __name__ == '__main__':
 
-    gfa_file = 'data/gonno_unitigs/gonno_unitigs.gfa'
-    unitigs_fasta = 'data/gonno_unitigs/gonno_unitigs_unitigs.fasta'
-    rtab_file = 'data/gonno_unitigs/gonno.rtab' #to filter unitigs based on frequency
+    edges_file = 'data/gonno_unitigs/graph.edges.dbg'
+    nodes_file = 'data/gonno_unitigs/graph.nodes'
+    unique_rows_file = 'data/gonno_unitigs/unitigs.unique_rows_to_all_rows.txt'
+    rtab_file = 'data/gonno_unitigs/unitigs.unique_rows.Rtab' #to filter unitigs based on frequency
     metadata_file = 'data/metadata.csv'
     outcome_column = 'log2_cip_mic'
-
-    g = pyfrost.load(gfa_file) #path to bfg_colours file is inferred
 
     #applies frequency filter to unitigs
     metadata = parse_metadata(metadata_file, rtab_file, outcome_column) #to know which files to include
     intermediate_unitigs = filter_unitigs(rtab_file, metadata.index, 
                                         filt = (0.05, 0.95)) 
+    
+    #to speed up search
+    intermediate_unitigs_bf = BloomFilter() 
+    for i in intermediate_unitigs:
+        intermediate_unitigs_bf.add(i)
 
-    logging.info('Identifying intermediate frequency nodes and mapping them to uuids, this could take a while')
-    #map unitig sequences to their uuid
-    nodes_dict = {}
-    with open(unitigs_fasta, 'r') as a:
-        for line in a:
-            if line.startswith('>'):
-                kmer = line.strip('>*\n')
-                continue
-            else: 
-                if kmer in intermediate_unitigs:
-                    nodes_dict[line.strip('\n')] = kmer
+    #dict will contain all intermediate frequency graph nodes mapped to their pattern id
+    node_to_pattern_id = {}
+    pattern_id_to_node = {}
+    with open(unique_rows_file, 'r') as a:
+        reader = csv.reader(a, delimiter = ' ')
+        for row in reader:
+            for node in row[2:-1]:
+                node_to_pattern_id[node] = row[0]
+            pattern_id_to_node[row[0]] = row[2:-1]
 
-    logging.info('Extracting adjacency')
-    #get adjacency of all intermediate nodes in unitigs.fasta
-    adjacency_dict = {}
-    for n, neighbours in g.adj.items():
-        node = g.nodes[n]['unitig_sequence']
-        if node not in nodes_dict: continue #graph includes all kmers
-        adjacency_dict[node] = []
-        for nbr in neighbours:
-            adjacency_dict[node].append(g.nodes[nbr]['unitig_sequence'])
-
-    #dictionary of unitig uuids, value is list of adjacent unitigs
-    unitig_adjacency = {int(nodes_dict[k]) - 1 :map_nodes(v, nodes_dict) \
-        for k, v in adjacency_dict.items()}
-
-    dims = len(unitig_adjacency)
-    adj_matrix = sparse.dok_matrix((dims, dims)) #empty sparse matrix 
-    deg_matrix = sparse.dok_matrix((dims, dims)) #empty degree matrix 
-
-    logging.info('Constructing sparse adjacency matrix and sparse degree matrix')
-    #fill in sparse matrix
-    unitig_order = list(unitig_adjacency.keys())
-    for unitig, neighbours in unitig_adjacency.items():
-        unitig_pos = unitig_order.index(unitig)
-        for nbr in neighbours:
-            nbr_pos = unitig_order.index(nbr)
-            adj_matrix[unitig_pos, nbr_pos] = 1
-            adj_matrix[nbr_pos, unitig_pos] = 1 
-        adj_matrix[unitig_pos, unitig_pos] = 1 #equivalent to adding identity matrix
-        deg_matrix[unitig_pos, unitig_pos] = len(neighbours)
-
-    logging.info('Converting adjacency matrix to sparse tensor')
+    adj_matrix = parse_graph_adj_matrix(edges_file, nodes_file, 
+                                        node_to_pattern_id)
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
+
+
+
+
+    logging.info('Identifying edges between intermediate frequency nodes, can be very slow')
+    last_line = subprocess.check_output(['tail', '-1', rtab_file])
+    n = int(last_line.decode().split(' ')[0])
+    adjacency_dict = {i:[] for i in range(n)} #empty dict of max possible size
+
+    total_lines = total_lines = sum(1 for line in open(edges_file)) #lines in edges file
+    with open(edges_file, 'r') as f:
+        reader = csv.reader(f, delimiter = '\t')
+        i = 0
+        for row in reader:
+            if int(row[0]) in adjacency_dict:
+                if not is_intermediate(row[0]):
+                    del adjacency_dict[int(row[0])]
+                elif is_intermediate(row[1]):
+                    adjacency_dict[int(row[0])].append(int(row[1]))
+            i += 1
+            sys.stdout.write(f'\rprocessing {i} of {total_lines} edges')
+            sys.stdout.flush()
+
+    intermediate_unitigs_integers = list(map(int, intermediate_unitigs))
+    filtered_adj_dict = {k:v for k,v in adjacency_dict.items() 
+                                        if k in intermediate_unitigs_integers}
+
+    ordered_adj_dict = order_adjacency_dict(filtered_adj_dict)
+    dims = len(ordered_adj_dict)
+    adj_matrix = sparse.dok_matrix((dims, dims)) #empty sparse matrix     
+    deg_matrix = sparse.dok_matrix((dims, dims)) #empty sparse matrix    
+
+    logging.info('Constructing sparse adjacency and degree matrix')
+    for node, neighbours in order_adjacency_dict.items():
+        for nbr in neighbours:
+            adj_matrix[node, nbr] = 1
+        deg_matrix[node, node] = len(neighbours)
+
+    logging.info('Converting adjacency and degree matrices to sparse tensors')
+    adj_tensor = convert_to_tensor(adj_matrix.tocoo())
+    deg_tensor = convert_to_tensor(deg_matrix.tocoo())
