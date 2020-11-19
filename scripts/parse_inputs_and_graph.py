@@ -173,7 +173,7 @@ def split_training_and_testing(rtab_file,
             writer.writerow(row)
 
 
-def load_features(rtab_file, mapping_dict):
+def load_features(rtab_file, mapping_dict, adj_tensor):
     '''
     parses rtab file as sparse matrix of features
     this was the most memory efficient way i could find to do this
@@ -208,7 +208,7 @@ def load_features(rtab_file, mapping_dict):
         sys.stdout.flush()
 
     indices = torch.LongTensor([x_idx, y_idx])
-    shape = (num_samples, max(y_idx) + 1)
+    shape = (num_samples, adj_tensor.shape[1])
     
     #delete these to free up RAM
     del x_idx
@@ -234,7 +234,7 @@ def filter_unitigs(training_features, testing_features, adj):
     #create list of every feature which is represented at least once
     present_unitigs = []
     for i in range(len(testing_features_trans)):
-        if testing_features_trans[i].tolist().count(1) != 0 and \
+        if testing_features_trans[i].tolist().count(1) != 0 or \
             training_features_trans[i].tolist().count(1) != 0:
             present_unitigs.append(i)
 
@@ -259,6 +259,7 @@ def filter_unitigs(training_features, testing_features, adj):
                                   merged_df.unitig_no_y.to_list()])
     values = [1] * len(indices[0])
     adj_tensor = torch.sparse_coo_tensor(indices, values)
+    adj_tensor = adj_tensor.type(torch.FloatTensor)
 
     #build new feature tensors
     filtered_training_features = torch.stack([training_features_trans[i] \
@@ -305,7 +306,8 @@ def load_families(metadata, families):
     family_tensors = {}
     for i in families:
         family_tensors[i] = \
-            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) for x in families])
+            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) \
+                                                        for x in families])
 
     def parse_family(family):
         return family_tensors[family]
@@ -381,22 +383,24 @@ if __name__ == '__main__':
                                             testing_rtab_file,
                                             metadata, 
                                             country_split = True,
-                                            freq_filt = (0.05, 0.95))
+                                            freq_filt = (0.01, 0.99))
             else:
                 split_training_and_testing(rtab_file, 
                                             metadata.index, 
                                             training_rtab_file, 
                                             testing_rtab_file,
-                                            freq_filt = (0.05, 0.95))
+                                            freq_filt = (0.01, 0.99))
 
             #reads in rtab as sparse feature tensor
             training_features = load_features(training_rtab_file, 
-                                            pattern_id_to_node)
+                                            pattern_id_to_node, 
+                                            adj_tensor)
             testing_features = load_features(testing_rtab_file,
-                                            pattern_id_to_node)
+                                            pattern_id_to_node, 
+                                            adj_tensor)
 
             #removes all unitigs which were filtered out and reshapes adjacency tensor
-            adj_tensor, training_features, testing_features = \
+            adj, training_features, testing_features = \
                  filter_unitigs(training_features, testing_features, adj_tensor)
 
             #ensure metadata is in same order as features for label extraction
@@ -415,7 +419,7 @@ if __name__ == '__main__':
             training_countries = None
             testing_countries = None
 
-        out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
+        out_dir = os.path.join('data/model_inputs/freq_1_99', outcome_column)
         save_data(out_dir, training_features, testing_features, training_labels, 
-                    testing_labels, adj_tensor, 
+                    testing_labels, adj, 
                     training_countries, testing_countries)
