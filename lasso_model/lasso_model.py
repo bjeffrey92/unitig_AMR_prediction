@@ -78,7 +78,7 @@ def plot_results(accuracy_dict, fname):
 
 
 if __name__ == '__main__':
-    root_dir = 'model_inputs/freq_1_99/'
+    root_dir = 'data/model_inputs/freq_5_95/'
 
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
@@ -95,4 +95,5 @@ if __name__ == '__main__':
         fname = outcome + '_lasso_predictions.pkl'
         save_output(accuracy_dict, fname)
 
-        # plot_results(accuracy_dict, fname)
+        fname = outcome + '_lasso_predictions.png'
+        plot_results(accuracy_dict, fname)
