@@ -27,13 +27,18 @@ class GCN(nn.Module):
 
 
 class GCNPerNode(nn.Module):
-    def __init__(self, n_feat, n_hid_1, n_hid_2, n_hid_3, out_dim, dropout):
+    def __init__(self, n_feat, n_hid_1, n_hid_2, out_dim, dropout, 
+                n_hid_3 = None):
         super(GCNPerNode, self).__init__()
 
         self.gc = GraphConvolutionPerNode(n_feat, n_hid_1)
         self.linear1 = nn.Linear(n_hid_1, n_hid_2)
-        self.linear2 = nn.Linear(n_hid_2, n_hid_3)
-        self.linear3 = nn.Linear(n_hid_3, out_dim)
+        if n_hid_3:
+            self.linear2 = nn.Linear(n_hid_2, n_hid_3)
+            self.linear3 = nn.Linear(n_hid_3, out_dim)
+        else:
+            self.linear2 = nn.Linear(n_hid_2, out_dim)
+            self.linear3 = None
         self.dropout = dropout
 
     def forward(self, x, adj):
@@ -41,9 +46,12 @@ class GCNPerNode(nn.Module):
         # F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.linear1(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.leaky_relu(self.linear2(x))
-        F.dropout(x, self.dropout, inplace = True, training = True)
-        out = self.linear3(x)[0][0]
+        if self.linear3 is not None:
+            x = F.leaky_relu(self.linear2(x))
+            F.dropout(x, self.dropout, inplace = True, training = True)
+            out = self.linear3(x)[0][0]
+        else:
+            out = self.linear2(x)[0][0]
         return out
 
 
