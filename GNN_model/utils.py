@@ -83,7 +83,7 @@ class DataGenerator():
         assert len(features) == len(labels), \
             'Features and labels are of different length'
         self.features = self._parse_features(features)
-        self.labels = labels
+        self.labels = labels + min(abs(labels)) #make +ve so relu can be used on final layer
         self.n_nodes = self.features[0].shape[0]
         self.n_samples = len(labels)
         self.n = 0
@@ -134,7 +134,7 @@ class DataGenerator():
                         {i:self.labels_2[i] for i in self._index}.values()))
 
 class MetricAccumulator():
-    def __init__(self, gradient_batch = 20):
+    def __init__(self, gradient_batch = 10):
         self.training_data_loss = []
         self.training_data_acc = []
         self.testing_data_loss = []
@@ -183,4 +183,4 @@ class MetricAccumulator():
             Training Data Loss Gradient = {avg_grads[0]}\n \
             Training Data Accuracy Gradient = {avg_grads[1]}\n \
             Testing Data Loss Gradient = {avg_grads[2]}\n \
-            Testing Data Accuracy Gradient = {avg_grads[3]}')
+            Testing Data Accuracy Gradient = {avg_grads[3]}\n')

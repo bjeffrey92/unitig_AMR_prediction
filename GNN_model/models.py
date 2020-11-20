@@ -21,7 +21,7 @@ class GCN(nn.Module):
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.linear1(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = self.linear2(x)
+        x = F.relu(self.linear2(x))
         out = x.mean()
         return out
 
@@ -49,9 +49,9 @@ class GCNPerNode(nn.Module):
         if self.linear3 is not None:
             x = F.leaky_relu(self.linear2(x))
             F.dropout(x, self.dropout, inplace = True, training = True)
-            out = self.linear3(x)[0][0]
+            out = F.relu(self.linear3(x)[0][0])
         else:
-            out = self.linear2(x)[0][0]
+            out = F.relu(self.linear2(x)[0][0])
         return out
 
 
@@ -87,6 +87,6 @@ class VanillaNN(nn.Module):
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.linear2(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = self.linear3(x)[0][0]
+        out = F.relu(self.linear3(x)[0][0])
         return out
 
