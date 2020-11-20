@@ -9,6 +9,7 @@ import numpy as np
 import networkx as nx
 from itertools import compress
 from torch_sparse import SparseTensor
+from scipy.sparse import identity
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -358,6 +359,8 @@ if __name__ == '__main__':
     logging.info('Constructing graph adjacency matrix')
     adj_matrix = parse_graph_adj_matrix(edges_file, nodes_file, 
                                         node_to_pattern_id)
+    I = identity(adj_matrix.shape[0])
+    adj_matrix = adj_matrix + I #so every node is connected to itself
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
 
     for outcome_column in outcome_columns:
