@@ -171,7 +171,7 @@ def parse_args():
 
 
 def train_multiple():
-    root_dir = 'data/model_inputs/family_normalised/'
+    root_dir = 'data/model_inputs/freq_10_90'
 
     Abs = ['log2_azm_mic',
         'log2_cip_mic',
@@ -184,13 +184,13 @@ def train_multiple():
         training_data, testing_data, adj = load_data(data_dir)
 
         model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50,
-                    n_hid_2 = 50, n_hid_3 = 20, out_dim = 1, dropout = 0.5)
+                    n_hid_2 = 50, out_dim = 1, dropout = 0.3)
 
         optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
-                        weight_decay = 5e-4)
+                        weight_decay = 5e-3)
         loss_function = logcosh
 
-        summary_file = Ab + '_epoch_results.tsv'
+        summary_file = Ab + '_epoch_results2.tsv'
 
         #records training metrics and logs the gradient after each epoch
         training_metrics = MetricAccumulator() 
@@ -209,14 +209,14 @@ def train_multiple():
                 training_metrics.log_gradients(epoch)
             write_epoch_results(epoch, epoch_results, summary_file)
         
-            if len([i for i in training_metrics.training_data_acc_grads[-10:] \
+            if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
                  if i < 0.1]) >= 10 and epoch > 50:
                 logging.info('Gradient of training data accuracy appears to have plateaued, terminating early')
                 break
 
         logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
-        torch.save(model, Ab + '_fitted_GNN.pt')
+        torch.save(model, Ab + '_fitted_GNN2.pt')
 
 
 def main(args):
