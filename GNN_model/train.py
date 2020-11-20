@@ -211,7 +211,7 @@ def train_multiple():
         
             if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
                  if i < 0.1]) >= 10 and epoch > 50:
-                logging.info('Gradient of training data accuracy appears to have plateaued, terminating early')
+                logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
                 break
 
         logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
