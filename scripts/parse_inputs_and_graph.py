@@ -318,6 +318,7 @@ def load_families(metadata, families):
 
 def save_data(out_dir, training_features, testing_features, 
                 training_labels, testing_labels, adjacency_matrix,
+                training_metadata, testing_metadata,
                 training_countries = None, testing_countries = None):
     
     torch.save(training_features, os.path.join(out_dir, 'training_features.pt'))
@@ -326,6 +327,11 @@ def save_data(out_dir, training_features, testing_features,
     torch.save(testing_labels, os.path.join(out_dir, 'testing_labels.pt'))
     torch.save(adjacency_matrix, os.path.join(out_dir, 
                                             'unitig_adjacency_tensor.pt'))
+
+    training_metadata.to_csv(os.path.join(out_dir, 'training_metadata.csv'),
+                            index = False)
+    testing_metadata.to_csv(os.path.join(out_dir, 'testing_metadata.csv'),
+                            index = False)
 
     if training_countries is not None:
         torch.save(training_countries, 
@@ -386,13 +392,13 @@ if __name__ == '__main__':
                                             testing_rtab_file,
                                             metadata, 
                                             country_split = True,
-                                            freq_filt = (0.01, 0.99))
+                                            freq_filt = (0.05, 0.95))
             else:
                 split_training_and_testing(rtab_file, 
                                             metadata.index, 
                                             training_rtab_file, 
                                             testing_rtab_file,
-                                            freq_filt = (0.01, 0.99))
+                                            freq_filt = (0.05, 0.95))
 
             #reads in rtab as sparse feature tensor
             training_features = load_features(training_rtab_file, 
@@ -422,7 +428,7 @@ if __name__ == '__main__':
             training_countries = None
             testing_countries = None
 
-        out_dir = os.path.join('data/model_inputs/freq_1_99', outcome_column)
+        out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
         save_data(out_dir, training_features, testing_features, training_labels, 
-                    testing_labels, adj, 
+                    testing_labels, adj, training_metadata, testing_metadata,
                     training_countries, testing_countries)
