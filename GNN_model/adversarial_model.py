@@ -32,14 +32,16 @@ class MICPredictor(nn.Module):
         return pred, x
 
 class Adversary(nn.Module):
-    def __init__(self, n_feat, n_hid, out_dim):
+    def __init__(self, n_feat, n_hid_1, n_hid_2, out_dim):
         super(Adversary, self).__init__()
 
-        self.linear1 = nn.Linear(n_feat, n_hid)
-        self.linear2 = nn.Linear(n_hid, out_dim)
+        self.linear1 = nn.Linear(n_feat, n_hid_1)
+        self.linear2 = nn.Linear(n_hid_1, n_hid_2)
+        self.linear3 = nn.Linear(n_hid_2, out_dim)
 
     def forward(self, x):
         #input is output of penultimate layer of MICPredictor
         x = F.leaky_relu(self.linear1(x))
-        pred = self.linear2(x)[0]
+        x = F.leaky_relu(self.linear2(x))
+        pred = self.linear3(x)[0]
         return pred
