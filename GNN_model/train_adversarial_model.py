@@ -85,7 +85,7 @@ def pre_train_predictor(predictor, pred_optimizer, pred_loss,
             f'\tTraining Data Loss = {loss_train}\n' + \
             f'\tTraining Data Accuracy = {acc_train}\n'
             f'\tTesting Data Loss = {loss_test}\n' + \
-            f'\tTesting Data Accuracy = {acc_test}'
+            f'\tTesting Data Accuracy = {acc_test}\n'
             )
 
     return predictor, (loss_train, acc_train, loss_test, acc_test)
@@ -124,7 +124,7 @@ def pre_train_adversary(predictor, adversary, adv_optimizer, adv_loss,
                 f'\tPredictor Training Loss = {loss_train}\n' + \
                 f'\tPredictor Training Accuracy = {acc_train}\n'
                 f'\tAdversary Training Loss = {loss_train}\n' + \
-                f'\tAdversary Training Acc = {acc_train}'
+                f'\tAdversary Training Acc = {acc_train}\n'
                 )
 
     return adversary, (loss_train, acc_train, loss_train, acc_train)
@@ -134,12 +134,13 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
     data.reset_generator()
     predictor.train(False)
     
-    output = epoch_(data, adj, predictor, adversary)
     if adversary is not None:
         adversary.train(False)
+        output = epoch_(data, adj, predictor, adversary)
         loss = float(loss_function(output[1], data.labels_2))
         acc = accuracy(output[1], data.labels_2)
     else:
+        output = epoch_(data, adj, predictor, adversary)
         loss = float(loss_function(output, data.labels))
         acc = accuracy(output, data.labels)
 
@@ -147,18 +148,17 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
 
 
 def main():
-    data_dir =  'data/model_inputs/country_normalised/log2_azm_mic/'
+    data_dir =  'data/model_inputs/family_normalised/log2_azm_mic/'
 
     training_data, testing_data, adj = load_data(data_dir, 
-                                                countries = True, 
-                                                families = False)
+                                                countries = False, 
+                                                families = True)
 
     predictor = MICPredictor(n_feat = training_data.n_nodes,
                             n_hid_1 = 50, 
                             n_hid_2 = 50,
-                            n_hid_3 = 20,
                             out_dim = 1,
-                            dropout = 0.5)    
+                            dropout = 0.3)    
     adversary = Adversary(n_feat = 20,
                         n_hid = 20, 
                         out_dim = max(training_data.labels_2.tolist()) + 1)
