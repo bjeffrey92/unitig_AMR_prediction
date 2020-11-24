@@ -53,6 +53,22 @@ def plot_results(results_dict, title, fname):
     plt.savefig(fname)
 
 
+def plot_prediction_distributions(training_data, train_preds, phenotype):
+    plt.clf()
+    
+    pd.Series(training_data.labels.tolist()).plot(kind = 'density', 
+                                                label = 'Training Data',
+                                                bw_method = 0.3)
+    pd.Series(train_preds.tolist()).plot(kind = 'density', 
+                                        label = 'Training Data Predictions',
+                                        bw_method = 0.3)
+
+    plt.legend()
+    plt.xlabel('MIC')
+    plt.title(f'{phenotype} Predictions and Training Data Distribution')
+    plt.savefig(f'{phenotype}_prediction_distributions.png')
+
+
 def plot_model_accuracy_by_category(model_file, data_dir):
     training_data, testing_data, adj = load_data(data_dir)
     training_metadata = pd.read_csv(os.path.join(data_dir, 
@@ -63,6 +79,11 @@ def plot_model_accuracy_by_category(model_file, data_dir):
 
     train_preds = epoch_(model, training_data, adj)
     test_preds = epoch_(model, testing_data, adj)
+    
+    regex = r'(?<=/).*?(?=_fit)'
+    phenotype = re.findall(regex, model_file)[0]
+    
+    plot_prediction_distributions(training_data, train_preds, phenotype)
     
     def pred_accuracy_by_category(predictions, labels, metadata, column, 
                                 training_metadata = None):
@@ -122,9 +143,6 @@ def plot_model_accuracy_by_category(model_file, data_dir):
                                                 testing_data.labels, 
                                                 testing_metadata, 'Family',
                                                 training_metadata)
-
-    regex = r'(?<=/).*?(?=_fit)'
-    phenotype = re.findall(regex, model_file)[0]
 
     plt.clf()
 
