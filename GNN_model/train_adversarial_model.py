@@ -130,6 +130,65 @@ def pre_train_adversary(predictor, adversary, adv_optimizer, adv_loss,
     return adversary, (loss_train, acc_train, loss_train, acc_train)
 
 
+def adversarial_training(predictor, pred_optimizer, pred_loss, training_data, 
+                    adj, epoch, adversary, adv_loss, adv_optimizer, lbda, 
+                    testing_data = None):
+    
+    t = time.time()
+    predictor.train()
+    adversary.train()
+    pred_optimizer.zero_grad()
+    adv_optimizer.zero_grad()
+
+    training_data.shuffle_samples()
+
+    #train predictor
+    for param in predictor.params():
+        param.requires_grad = True
+    pred_outputs, adv_outputs = epoch_(training_data, adj, predictor, adversary)
+    
+    loss_adversary = adv_loss(adv_outputs, training_data.labels_2)
+    loss_pred = pred_loss(pred_outputs, training_data.labels)
+    loss_pred = loss_pred - lbda * loss_adversary #adjusted loss function for predictor
+    loss_pred.backward()
+    pred_optimizer.step()
+
+
+    #train adversary
+    for param in predictor.params():
+        param.requires_grad = False
+    pred_outputs, adv_outputs = epoch_(training_data, adj, predictor, adversary)
+    
+    loss_adversary = adv_loss(adv_outputs, training_data.labels_2)
+    loss_adversary.backward()
+    adv_optimizer.step()
+
+    #for logging
+    for param in predictor.params():
+        param.requires_grad = True
+    predictor.train(False)
+    loss_train = float(pred_loss(pred_outputs, training_data.labels))
+    acc_train = accuracy(pred_outputs, training_data.labels)
+    
+    if testing_data:
+        loss_test, acc_test = test(testing_data, adj, pred_loss, 
+                                accuracy, predictor)
+    else:
+        loss_test = 'N/A'
+        acc_test = 'N/A'
+
+    logging.info('Predictor pretraining:\n' + \
+            f'Epoch {epoch} complete\n' + \
+            f'\tTime taken = {time.time() - t}\n' + \
+            f'\tTraining Data Loss = {loss_train}\n' + \
+            f'\tTraining Data Accuracy = {acc_train}\n'
+            f'\tTesting Data Loss = {loss_test}\n' + \
+            f'\tTesting Data Accuracy = {acc_test}\n'
+            )
+
+    return predictor, adversary, (loss_train, acc_train, loss_test, acc_test)
+
+
 def test(data, adj, loss_function, accuracy, predictor, adversary = None):
     data.reset_generator()
     predictor.train(False)
@@ -159,8 +218,9 @@ def main():
                             n_hid_2 = 50,
                             out_dim = 1,
                             dropout = 0.3)    
-    adversary = Adversary(n_feat = 20,
-                        n_hid = 20, 
+    adversary = Adversary(n_feat = 50,
+                        n_hid_1 = 50,
+                        n_hid_2 = 50, 
                         out_dim = max(training_data.labels_2.tolist()) + 1)
     
     pred_optimizer = optim.Adam(predictor.parameters(), lr = 0.0001,
@@ -190,7 +250,7 @@ def main():
     training_metrics = MetricAccumulator()
     for param in predictor.parameters():
         param.requires_grad = False #gradient only calculated over adversary network
-    for epoch in range(60):
+    for epoch in range(100):
         epoch += 1
         adversary, epoch_results = pre_train_adversary(predictor, 
                                                     adversary, 
@@ -202,7 +262,24 @@ def main():
                                                     testing_data = None)
         training_metrics.add(epoch_results)
         training_metrics.log_gradients(epoch)
+        write_epoch_results(epoch, list(epoch_results)[:2] + ['NA', 'NA'], 
+                            'adversary_training.log')
 
+    #Adversarial training
+    lbda = 3 #weighting between adversary and predictor loss
+    training_metrics = MetricAccumulator()
+    for epoch in range(300):
+        epoch += 1    
+        predictor, adversary, epoch_results = adversarial_training(predictor, 
+                                                pred_optimizer, pred_loss, 
+                                                training_data, adj, epoch, 
+                                                adversary, adv_loss, 
+                                                adv_optimizer, lbda, 
+                                                testing_data = None)
+        training_metrics.add(epoch_results)
+        training_metrics.log_gradients(epoch)
+        write_epoch_results(epoch, epoch_results, 
+                            'adversarial_predictor_training.tsv')
 
 # if __name__ == '__main__':
 #     main()
