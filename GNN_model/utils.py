@@ -63,7 +63,7 @@ def accuracy(predictions: torch.tensor, labels: torch.tensor):
     correct = diff[[i < 1 for i in diff]]
     return len(correct)/len(predictions) * 100
 
-def country_accuracy(predictions: torch.tensor, labels: torch.tensor):
+def country_accuracy(predictions: torch.Tensor, labels: torch.tensor):
     assert len(predictions) == len(labels), \
         'Predictions and labels are of unequal lengths'
     predictions = predictions.tolist()
@@ -71,6 +71,19 @@ def country_accuracy(predictions: torch.tensor, labels: torch.tensor):
     correct_bool = [predictions[i].index(max(predictions[i]))  == labels[i] 
                         for i in range(len(predictions))]
     return len(np.array(labels)[correct_bool])/len(labels) * 100
+
+def R_or_S(MIC, boundary):
+    '''
+    convert MIC to resistant or sensitive
+    Presumes MIC has been transformed by log2
+    '''
+    return [0 if 2**i <= boundary else 1 for i in MIC]
+
+def sensitivity():
+    pass
+
+def specificity():
+    pass
 
 #custom loss function 
 def logcosh(true, pred):
@@ -184,3 +197,11 @@ class MetricAccumulator():
             Training Data Accuracy Gradient = {avg_grads[1]}\n \
             Testing Data Loss Gradient = {avg_grads[2]}\n \
             Testing Data Accuracy Gradient = {avg_grads[3]}\n')
+
+#eucast resistance breakpoints for gonno
+breakpoints = {
+    'azm': 1,
+    'cfx': 0.125,
+    'cip': 0.06,
+    'cro': 0.125
+}
