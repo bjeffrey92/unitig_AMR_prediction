@@ -2,6 +2,7 @@
 
 import time
 import logging
+import os
 import math
 
 import torch
@@ -121,13 +122,13 @@ def pre_train_adversary(predictor, adversary, adv_optimizer, adv_loss,
     logging.info('Adversary pretraining:\n' + \
                 f'Epoch {epoch} complete\n' + \
                 f'\tTime taken = {time.time() - t}\n' + \
-                f'\tPredictor Training Loss = {loss_train}\n' + \
-                f'\tPredictor Training Accuracy = {acc_train}\n'
                 f'\tAdversary Training Loss = {loss_train}\n' + \
-                f'\tAdversary Training Acc = {acc_train}\n'
+                f'\tAdversary Training Accuracy = {acc_train}\n'
+                f'\tAdversary Testing Loss = {loss_test}\n' + \
+                f'\tAdversary Testing Acc = {acc_test}\n'
                 )
 
-    return adversary, (loss_train, acc_train, loss_train, acc_train)
+    return adversary, (loss_train, acc_train, loss_test, acc_test)
 
 
 def adversarial_training(predictor, pred_optimizer, pred_loss, training_data, 
@@ -214,8 +215,16 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
     return loss, acc
 
 
-# if __name__ == '__main__':
-    data_dir =  'data/model_inputs/family_normalised/log2_azm_mic/'
+if __name__ == '__main__':
+    root_dir =  'data/model_inputs/family_normalised'
+
+    Abs = ['log2_azm_mic',
+        'log2_cip_mic',
+        'log2_cro_mic',
+        'log2_cfx_mic']
+    
+    Ab = Abs[2]
+    data_dir = os.path.join(root_dir, Ab)
 
     training_data, testing_data, adj = load_data(data_dir, 
                                                 countries = False, 
@@ -224,9 +233,8 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
     predictor = MICPredictor(n_feat = training_data.n_nodes,
                             n_hid_1 = 50, 
                             n_hid_2 = 50,
-                            out_dim = 50,
-                            dropout = 0.3)   
-    MIC_layer = nn.Linear(50, 1) #implement as separate layer  
+                            out_dim = 1,
+                            dropout = 0.3)    
     adversary = Adversary(n_feat = 50,
                         n_hid_1 = 50,
                         n_hid_2 = 50, 
@@ -239,8 +247,9 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
                         weight_decay = 5e-4)
     adv_loss = nn.CrossEntropyLoss()
 
+
     #pretraining predictor
-    training_metrics = MetricAccumulator()
+    pred_training_metrics = MetricAccumulator()
     for param in predictor.parameters():
         param.requires_grad = True
     for epoch in range(60):
@@ -252,14 +261,19 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
                                                         adj, 
                                                         epoch, 
                                                         testing_data)
-        training_metrics.add(epoch_results)
-        training_metrics.log_gradients(epoch)
+        pred_training_metrics.add(epoch_results)
+        pred_training_metrics.log_gradients(epoch)
+        write_epoch_results(epoch, epoch_results, 
+                            f'{Ab}_predictor_pretraining.tsv')
+
+    torch.save(predictor, f'{Ab}_pretrained_predictor.pt')
+
 
     #pretraining adversary
-    training_metrics = MetricAccumulator()
+    adv_training_metrics = MetricAccumulator()
     for param in predictor.parameters():
         param.requires_grad = False #gradient only calculated over adversary network
-    for epoch in range(100):
+    for epoch in range(500):
         epoch += 1
         adversary, epoch_results = pre_train_adversary(predictor, 
                                                     adversary, 
@@ -268,32 +282,45 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
                                                     training_data, 
                                                     adj, 
                                                     epoch, 
-                                                    testing_data = None)
-        training_metrics.add(epoch_results)
-        training_metrics.log_gradients(epoch)
-        write_epoch_results(epoch, list(epoch_results)[:2] + ['NA', 'NA'], 
-                            'adversary_training.log')
+                                                    testing_data)
+        adv_training_metrics.add(epoch_results)
+        adv_training_metrics.log_gradients(epoch)
+        write_epoch_results(epoch, epoch_results, 
+                            f'{Ab}_adversary_pretraining.tsv')
+
+        if len([i for i in adv_training_metrics.testing_data_acc_grads[-10:] \
+                if i < 0.1]) >= 10 and epoch > 50:
+            logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
+            break
+    
+    torch.save(f'{Ab}_pretrained_adversary.pt')
+
 
     #Adversarial training
-    lbda = 3 #weighting between adversary and predictor loss
+    loss_pred = int(pred_training_metrics.training_loss[-1]) #final loss value of each model used to guess appropriate value for lbda
+    loss_adv = int(adv_training_metrics.training_loss[-1])
+    
+    lbda = loss_pred/loss_adv #weighting between adversary and predictor loss
+    
     training_metrics = MetricAccumulator()
-    for epoch in range(300):
+    for epoch in range(500):
         epoch += 1    
         predictor, adversary, epoch_results = adversarial_training(predictor, 
                                                 pred_optimizer, pred_loss, 
                                                 training_data, adj, epoch, 
                                                 adversary, adv_loss, 
                                                 adv_optimizer, lbda, 
-                                                testing_data = None)
+                                                testing_data)
         training_metrics.add(epoch_results)
         training_metrics.log_gradients(epoch)
         write_epoch_results(epoch, epoch_results, 
-                            'adversarial_predictor_training_fewer_pretrain_epochs.tsv')
+                            f'{Ab}_adversarial_predictor_training.tsv')
 
-        if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
+        #less stringent plateauing criteria for adversarial training
+        if len([i for i in training_metrics.testing_data_acc_grads[-30:] \
                 if i < 0.1]) >= 10 and epoch > 50:
             logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
             break
 
-        torch.save(predictor, 'fitted_predictor.pt')
-        torch.save(adversary, 'fitted_adversary.pt')
+    torch.save(predictor, f'{Ab}_fitted_predictor.pt')
+    torch.save(adversary, f'{Ab}_fitted_adversary.pt')
