@@ -35,7 +35,7 @@ def load_data(data_dir, countries = True, families = False):
     return training_data, testing_data, adj
 
 
-def epoch_(data, adj, predictor, adversary = None):
+def epoch_(predictor, data, adj, adversary = None):
     data.reset_generator()
 
     pred_outputs = [None] * data.n_samples
@@ -63,7 +63,7 @@ def pre_train_predictor(predictor, pred_optimizer, pred_loss,
     training_data.reset_generator()
     training_data.shuffle_samples()
 
-    pred_outputs = epoch_(training_data, adj, predictor)
+    pred_outputs = epoch_(predictor, training_data, adj)
 
     loss_train = pred_loss(pred_outputs, training_data.labels)
     acc_train = accuracy(pred_outputs, training_data.labels)
@@ -102,7 +102,7 @@ def pre_train_adversary(predictor, adversary, adv_optimizer, adv_loss,
     training_data.reset_generator()
     training_data.shuffle_samples()
     
-    adv_outputs = epoch_(training_data, adj, predictor, adversary)[1]
+    adv_outputs = epoch_(predictor, training_data, adj, adversary)[1]
     
     loss_train = adv_loss(adv_outputs, training_data.labels_2)
     acc_train = country_accuracy(adv_outputs, training_data.labels_2)
@@ -143,9 +143,11 @@ def adversarial_training(predictor, pred_optimizer, pred_loss, training_data,
     training_data.shuffle_samples()
 
     #train predictor
-    for param in predictor.params():
+    for param in predictor.parameters():
         param.requires_grad = True
-    pred_outputs, adv_outputs = epoch_(training_data, adj, predictor, adversary)
+    for param in adversary.parameters():
+        param.requires_grad = False
+    pred_outputs, adv_outputs = epoch_(predictor, training_data, adj, adversary)
     
     loss_adversary = adv_loss(adv_outputs, training_data.labels_2)
     loss_pred = pred_loss(pred_outputs, training_data.labels)
@@ -155,16 +157,20 @@ def adversarial_training(predictor, pred_optimizer, pred_loss, training_data,
 
 
     #train adversary
-    for param in predictor.params():
+    for param in predictor.parameters():
         param.requires_grad = False
-    pred_outputs, adv_outputs = epoch_(training_data, adj, predictor, adversary)
+    for param in adversary.parameters():
+        param.requires_grad = True
+    pred_outputs, adv_outputs = epoch_(predictor, training_data, adj, adversary)
     
     loss_adversary = adv_loss(adv_outputs, training_data.labels_2)
     loss_adversary.backward()
     adv_optimizer.step()
 
     #for logging
-    for param in predictor.params():
+    loss_adversary = float(loss_adversary)
+    acc_adversary = country_accuracy(adv_outputs, training_data.labels_2)
+    for param in predictor.parameters():
         param.requires_grad = True
     predictor.train(False)
     loss_train = float(pred_loss(pred_outputs, training_data.labels))
@@ -177,13 +183,15 @@ def adversarial_training(predictor, pred_optimizer, pred_loss, training_data,
         loss_test = 'N/A'
         acc_test = 'N/A'
 
-    logging.info('Predictor pretraining:\n' + \
+    logging.info('Adversarial Training:\n' + \
             f'Epoch {epoch} complete\n' + \
             f'\tTime taken = {time.time() - t}\n' + \
             f'\tTraining Data Loss = {loss_train}\n' + \
             f'\tTraining Data Accuracy = {acc_train}\n'
             f'\tTesting Data Loss = {loss_test}\n' + \
-            f'\tTesting Data Accuracy = {acc_test}\n'
+            f'\tTesting Data Accuracy = {acc_test}\n' + \
+            f'\tAdversary Training Data Loss = {loss_adversary}\n' + \
+            f'\tAdversary Training Data Accuracy = {acc_adversary}\n'
             )
 
     return predictor, adversary, (loss_train, acc_train, loss_test, acc_test)
@@ -195,18 +203,18 @@ def test(data, adj, loss_function, accuracy, predictor, adversary = None):
     
     if adversary is not None:
         adversary.train(False)
-        output = epoch_(data, adj, predictor, adversary)
+        output = epoch_(predictor, data, adj, adversary)
         loss = float(loss_function(output[1], data.labels_2))
         acc = accuracy(output[1], data.labels_2)
     else:
-        output = epoch_(data, adj, predictor, adversary)
+        output = epoch_(predictor, data, adj, adversary)
         loss = float(loss_function(output, data.labels))
         acc = accuracy(output, data.labels)
 
     return loss, acc
 
 
-def main():
+# if __name__ == '__main__':
     data_dir =  'data/model_inputs/family_normalised/log2_azm_mic/'
 
     training_data, testing_data, adj = load_data(data_dir, 
@@ -216,8 +224,9 @@ def main():
     predictor = MICPredictor(n_feat = training_data.n_nodes,
                             n_hid_1 = 50, 
                             n_hid_2 = 50,
-                            out_dim = 1,
-                            dropout = 0.3)    
+                            out_dim = 50,
+                            dropout = 0.3)   
+    MIC_layer = nn.Linear(50, 1) #implement as separate layer  
     adversary = Adversary(n_feat = 50,
                         n_hid_1 = 50,
                         n_hid_2 = 50, 
@@ -279,7 +288,12 @@ def main():
         training_metrics.add(epoch_results)
         training_metrics.log_gradients(epoch)
         write_epoch_results(epoch, epoch_results, 
-                            'adversarial_predictor_training.tsv')
+                            'adversarial_predictor_training_fewer_pretrain_epochs.tsv')
 
-# if __name__ == '__main__':
-#     main()
+        if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
+                if i < 0.1]) >= 10 and epoch > 50:
+            logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
+            break
+
+        torch.save(predictor, 'fitted_predictor.pt')
+        torch.save(adversary, 'fitted_adversary.pt')
