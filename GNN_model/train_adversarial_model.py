@@ -293,12 +293,12 @@ if __name__ == '__main__':
             logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
             break
     
-    torch.save(f'{Ab}_pretrained_adversary.pt')
+    torch.save(adversary, f'{Ab}_pretrained_adversary.pt')
 
 
     #Adversarial training
-    loss_pred = int(pred_training_metrics.training_loss[-1]) #final loss value of each model used to guess appropriate value for lbda
-    loss_adv = int(adv_training_metrics.training_loss[-1])
+    loss_pred = int(pred_training_metrics.training_data_loss[-1]) #final loss value of each model used to guess appropriate value for lbda
+    loss_adv = int(adv_training_metrics.training_data_loss[-1])
     
     lbda = loss_pred/loss_adv #weighting between adversary and predictor loss
     
