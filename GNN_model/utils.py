@@ -90,12 +90,36 @@ def logcosh(true, pred):
     loss = torch.log(torch.cosh(pred - true))
     return torch.sum(loss)
 
+def add_global_node(adj):
+    '''
+    Adds a single global node connected to all others
+    '''
+    adj = adj.coalesce()
+    values = adj.values()
+    indices = adj.indices()
+    shape = adj.shape
+
+    #to be added to indices to create new node which is connected to all others
+    global_node = [shape[0]] * shape[0]
+    global_node_connections = list(range(shape[0]))
+
+    #new indices 
+    i_0 = indices[0].tolist() + global_node + global_node_connections
+    i_1 = indices[1].tolist() +  global_node_connections + global_node
+    indices = torch.tensor([i_0, i_1])
+
+    #values including new node
+    values = torch.cat((values, torch.tensor([1] * shape[0] * 2)))
+
+    return torch.sparse_coo_tensor(indices, values)
+
+
 class DataGenerator():
     def __init__(self, features, labels, labels_2 = None, 
-                auto_reset_generator = True):
+                auto_reset_generator = True, global_node = True):
         assert len(features) == len(labels), \
             'Features and labels are of different length'
-        self.features = self._parse_features(features)
+        self.features = self._parse_features(features, global_node)
         self.labels = labels + min(abs(labels)) #make +ve so relu can be used on final layer
         self.n_nodes = self.features[0].shape[0]
         self.n_samples = len(labels)
@@ -107,10 +131,13 @@ class DataGenerator():
                 'labels_2 and labels are of different length'
         self.labels_2 = labels_2
 
-    def _parse_features(self, features):
+    def _parse_features(self, features, global_node: bool):
         l = [None] * len(features)
         for i in range(len(features)):
-            l[i] = features[i].unsqueeze(1)
+            if global_node:
+                l[i] = torch.cat((features[i], torch.Tensor([0.5]))).unsqueeze(1)
+            else:
+                l[i] = features[i].unsqueeze(1)
         return l
 
     def _iterate(self):

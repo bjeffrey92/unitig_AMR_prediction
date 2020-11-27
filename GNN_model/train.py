@@ -13,8 +13,8 @@ import torch.optim as optim
 from GNN_model.utils import load_training_data, load_testing_data, \
                             load_adjacency_matrix, save_model, accuracy,\
                             logcosh, write_epoch_results, DataGenerator, \
-                            MetricAccumulator
-from GNN_model.models import GCN, GCNPerNode, VanillaNN
+                            MetricAccumulator, add_global_node
+from GNN_model.models import GCNMaxPooling
 
 
 logging.basicConfig()
@@ -67,7 +67,8 @@ def batch_train(data, model, optimizer, adj, epoch,
         loss_train.backward()
         optimizer.step()    
 
-    output = epoch_(model, data, adj)
+    with torch.no_grad():
+        output = epoch_(model, data, adj)
     loss_train = float(loss_function(output, data.labels))
     acc_train = accuracy(output, data.labels)
     
@@ -124,22 +125,31 @@ def test(data, model, adj, loss_function, accuracy):
     data.reset_generator()
     model.train(False)
     
-    output = epoch_(model, data, adj)
+    with torch.no_grad():
+        output = epoch_(model, data, adj)
     loss = float(loss_function(output, data.labels))
     acc = accuracy(output, data.labels)
 
     return loss, acc
 
 
-def load_data(data_dir):
+def load_data(data_dir, global_node = False):
     adj = load_adjacency_matrix(data_dir)
+    
+    #adds node which is connected to all others
+    #required for gcn without max pooling layers
+    if global_node:
+        adj = add_global_node(adj)
+    
     training_features, training_labels = load_training_data(data_dir)
     testing_features, testing_labels = load_testing_data(data_dir)
     assert training_features.shape[1] == testing_features.shape[1], \
         'Dimensions of training and testing data not equal'
     
-    training_data = DataGenerator(training_features, training_labels)
-    testing_data = DataGenerator(testing_features, testing_labels)
+    training_data = DataGenerator(training_features, training_labels, 
+                                global_node = global_node)
+    testing_data = DataGenerator(testing_features, testing_labels, 
+                                global_node = global_node)
 
     return training_data, testing_data, adj
 
@@ -171,7 +181,7 @@ def parse_args():
 
 
 def train_multiple():
-    root_dir = 'data/model_inputs/freq_10_90'
+    root_dir = 'data/model_inputs/family_normalised'
 
     Abs = ['log2_azm_mic',
         'log2_cip_mic',
@@ -181,16 +191,18 @@ def train_multiple():
     for Ab in Abs:
         data_dir = os.path.join(root_dir, Ab)
 
-        training_data, testing_data, adj = load_data(data_dir)
+        training_data, testing_data, adj = load_data(data_dir, 
+                                                    global_node = True)
 
-        model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50,
-                    n_hid_2 = 50, out_dim = 1, dropout = 0.3)
+        model = GCNMaxPooling(n_feat = 1, conv_1 = 3, conv_2 = 3, n_hid = 20, 
+                            out_dim = 1, dropout = 0.3)
 
-        optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
-                        weight_decay = 5e-3)
-        loss_function = logcosh
+        optimizer = optim.Adam(model.parameters(), lr = 0.001, 
+                        weight_decay = 5e-4)
+        # loss_function = logcosh
+        loss_function = nn.MSELoss()
 
-        summary_file = Ab + '_epoch_results2.tsv'
+        summary_file = Ab + '_family_normalised_new_GNN.tsv'
 
         #records training metrics and logs the gradient after each epoch
         training_metrics = MetricAccumulator() 
@@ -200,9 +212,10 @@ def train_multiple():
             epoch += 1
             
 
-            model, epoch_results = train(training_data, model, 
+            model, epoch_results = batch_train(training_data, model, 
                                         optimizer, adj, epoch, loss_function, 
-                                        accuracy, testing_data)
+                                        accuracy, testing_data, 
+                                        batch_size = 250)
             
             training_metrics.add(epoch_results)
             if epoch >= 20:
@@ -216,54 +229,50 @@ def train_multiple():
 
         logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
-        torch.save(model, Ab + '_fitted_GNN2.pt')
+        torch.save(model, Ab + '_family_normalised_fitted_GNN.pt')
 
 
-def main(args):
-    if args.logfile:
-        logging.basicConfig(filename = args.logfile)
+def main(args):    
 
-    training_data, testing_data, adj = load_data(args.data_dir)
+    Ab = 'log2_azm_mic'
+    data_dir = os.path.join('data/model_inputs/family_normalised', Ab)
 
-    if not args.alt_model:
-        model = GCN(n_feat = 1,
-                    n_hid_1 = 4,
-                    n_hid_2 = 8,
-                    out_dim = 1,
-                    dropout = args.dropout)
-    else: 
-        model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 1000, 
-                        n_hid_2 = 500, out_dim = 1, dropout = 0.5)
+    training_data, testing_data, adj = load_data(data_dir)
 
-    optimizer = optim.Adam(model.parameters(), lr = args.lr, 
-                        weight_decay = args.weight_decay)
-    loss_function = logcosh
+    model = GCNMaxPooling(n_feat = 1, conv_1 = 3, conv_2 = 3, n_hid = 20, 
+                        out_dim = 1, dropout = 0.3)
+
+    optimizer = optim.Adam(model.parameters(), lr = 0.001, 
+                    weight_decay = 5e-4)
+    loss_function = nn.MSELoss()
+
+    summary_file = Ab + '_family_normalised_new_GNN.tsv'
 
     #records training metrics and logs the gradient after each epoch
     training_metrics = MetricAccumulator() 
 
     start_time = time.time()
-    for epoch in range(args.epoch):
+    for epoch in range(300):
         epoch += 1
         
-        if args.batch_size:
-            #parameters tuned per batch
-            model, epoch_results = batch_train(training_data, model, 
-                                            optimizer, adj, epoch, loss_function, 
-                                            accuracy, testing_data, 
-                                            batch_size = args.batch_size)
-        else:    
-            #parameters tuned per epoch
-            model, epoch_results = train(training_data, model, 
+        model, epoch_results = batch_train(training_data, model, 
                                     optimizer, adj, epoch, loss_function, 
-                                    accuracy, testing_data)
+                                    accuracy, testing_data, 
+                                    batch_size = 250)
         
         training_metrics.add(epoch_results)
         if epoch >= 20:
             training_metrics.log_gradients(epoch)
-        write_epoch_results(epoch, epoch_results, args.summary_file)
+        write_epoch_results(epoch, epoch_results, summary_file)
     
+        if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
+                if i < 0.1]) >= 10 and epoch > 50:
+            logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
+            break
+
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
+
+    torch.save(model, Ab + '_family_normalised_fitted_GNN.pt')
 
 
 # if __name__ == '__main__':

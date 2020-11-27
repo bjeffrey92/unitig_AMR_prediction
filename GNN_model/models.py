@@ -4,25 +4,45 @@ import torch.nn.functional as F
 from GNN_model.layers import GraphConvolution, GraphConvolutionPerNode
 
 
-class GCN(nn.Module):
-    def __init__(self, n_feat, conv_1, conv_2, n_hid, out_dim, dropout):
-        super(GCN, self).__init__()
+class GCNGlobalNode(nn.Module):
+    def __init__(self, n_feat, conv_1, n_hid, out_dim, dropout):
+        super(GCNGlobalNode, self).__init__()
 
         self.gc1 = GraphConvolution(n_feat, conv_1)
-        self.gc2 = GraphConvolution(conv_1, conv_2)
-        self.linear1 = nn.Linear(conv_2, n_hid)
+        # self.gc2 = GraphConvolution(conv_1, conv_2)
+        self.linear1 = nn.Linear(conv_1, n_hid)
+        self.linear2 = nn.Linear(n_hid, out_dim)
+        self.dropout = dropout
+
+    def forward(self, x, adj):
+        x = F.leaky_relu(self.gc1(x, adj))[-1] #select last node which is the global node
+        # x = F.leaky_relu(self.gc2(x, adj))[-1] 
+        x = F.leaky_relu(self.linear1(x))
+        F.dropout(x, self.dropout, inplace = True, training = True)
+        out = F.leaky_relu(self.linear2(x))[0]
+        return out
+
+
+class GCNMaxPooling(nn.Module):
+    def __init__(self, n_feat, conv_1, conv_2, n_hid, out_dim, dropout):
+        super(GCNMaxPooling, self).__init__()
+
+        self.gc1 = GraphConvolution(n_feat, conv_1)
+        # self.gc2 = GraphConvolution(n_feat, conv_2)
+        self.linear1 = nn.Linear(n_feat, n_hid)
         self.linear2 = nn.Linear(n_hid, out_dim)
         self.dropout = dropout
 
     def forward(self, x, adj):
         x = F.leaky_relu(self.gc1(x, adj))
-        # F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.leaky_relu(self.gc2(x, adj))
-        F.dropout(x, self.dropout, inplace = True, training = True)
+        # x, _ = torch.max(x, 1) #global max pooling
+        # x = x.unsqueeze(1)
+        # x = F.leaky_relu(self.gc2(x, adj))
+        x, _ = torch.max(x, 1) #global max pooling
+        x = x.unsqueeze(1)
         x = F.leaky_relu(self.linear1(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.relu(self.linear2(x))
-        out = x.mean()
+        out = F.leaky_relu(self.linear2(x))[0][0]
         return out
 
 
@@ -49,27 +69,9 @@ class GCNPerNode(nn.Module):
         if self.linear3 is not None:
             x = F.leaky_relu(self.linear2(x))
             F.dropout(x, self.dropout, inplace = True, training = True)
-            out = F.relu(self.linear3(x)[0][0])
+            out = F.leaky_relu(self.linear3(x)[0][0])
         else:
-            out = F.relu(self.linear2(x)[0][0])
-        return out
-
-
-class GCNCountry(nn.Module):
-    def __init__(self, n_feat, n_hid_1, n_hid_2, out_dim, dropout):
-        super(GCNCountry, self).__init__()
-
-        self.gc = GraphConvolutionPerNode(n_feat, n_hid_1)
-        self.linear1 = nn.Linear(n_hid_1, n_hid_2)
-        self.linear2 = nn.Linear(n_hid_2, out_dim)
-        self.dropout = dropout
-        
-    def forward(self, x, adj):
-        x = F.leaky_relu(self.gc(x, adj))
-        # F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.leaky_relu(self.linear1(x))
-        F.dropout(x, self.dropout, inplace = True, training = True)
-        out = self.linear2(x)[0]
+            out = F.leaky_relu(self.linear2(x)[0][0])
         return out
 
 
@@ -87,6 +89,6 @@ class VanillaNN(nn.Module):
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.linear2(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = F.relu(self.linear3(x)[0][0])
+        out = F.leaky_relu(self.linear3(x)[0][0])
         return out
 
