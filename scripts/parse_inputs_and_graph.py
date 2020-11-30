@@ -1,3 +1,4 @@
+import math
 import sys
 import logging
 import csv
@@ -9,17 +10,19 @@ import numpy as np
 import networkx as nx
 from itertools import compress
 from torch_sparse import SparseTensor
-from scipy.sparse import identity
+from scipy.sparse import identity, csr_matrix
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
 
-def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict):
+def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict, norm = True):
+    '''
+    norm is whether or not to normalised the adjacency matrix by multiplication
+    with symmetric normalised degree matrix
+    '''
 
-    unitig_ids = {}    
     G = nx.Graph()
-
     # Add nodes first
     node_list = []
     with open(nodes_file, 'r') as node_file:
@@ -29,7 +32,6 @@ def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict):
                 node_list.append((int(node_id), 
                                     dict(seq=node_seq, 
                                     seq_len=len(node_seq))))
-                unitig_ids[node_seq] = node_id
     G.add_nodes_from(node_list)
 
     # add edges
@@ -39,10 +41,20 @@ def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict):
             (start, end, label) = edge.rstrip().split("\t")
             if start in mapping_dict and end in mapping_dict:
                 edge_list.append((int(start), int(end)))
-
     G.add_edges_from(edge_list)
 
     adj_matrix = nx.adjacency_matrix(G)
+    I = identity(adj_matrix.shape[0])
+    adj_matrix = adj_matrix + I #so every node is connected to itself
+
+    if norm:
+        degs = np.array([v + 1 for k,v in dict(nx.degree(G)).items()]) #degree of each node
+        normed_deg = np.array([1/math.sqrt(i) for i in degs]) #equivalent to raising degree matrix to power -1/2
+        row = np.array(range(len(normed_deg)))
+        col = row 
+        deg_matrix = csr_matrix((normed_deg, (row, col)), 
+                                    shape = (len(normed_deg), len(normed_deg)))
+        adj_matrix = deg_matrix * adj_matrix * deg_matrix
 
     return adj_matrix
 
@@ -195,13 +207,14 @@ def load_features(rtab_file, mapping_dict, adj_tensor):
 
         i = 0
         for row in reader:
-            graph_nodes = mapping_dict[row[0]]
-            for j in range(1, len(row)): #first element of row is unitig number
-                if row[j] == '1':
-                    for node in graph_nodes:
-                        x_idx.append(j - 1)
-                        y_idx.append(int(node))
-                        values.append(1)
+            if row[0] in mapping_dict:
+                graph_nodes = mapping_dict[row[0]]
+                for j in range(1, len(row)): #first element of row is unitig number
+                    if row[j] == '1':
+                        for node in graph_nodes:
+                            x_idx.append(j - 1)
+                            y_idx.append(int(node))
+                            values.append(1)
             i += 1
             sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
             sys.stdout.flush()
@@ -363,10 +376,10 @@ if __name__ == '__main__':
             pattern_id_to_node[row[0]] = row[2:-1]
 
     logging.info('Constructing graph adjacency matrix')
+    #component_nodes is set of all the nodes in the largest component
     adj_matrix = parse_graph_adj_matrix(edges_file, nodes_file, 
-                                        node_to_pattern_id)
-    I = identity(adj_matrix.shape[0])
-    adj_matrix = adj_matrix + I #so every node is connected to itself
+                                        node_to_pattern_id, norm = True)  
+    
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
 
     for outcome_column in outcome_columns:
