@@ -42,6 +42,8 @@ def batch_train(data, model, optimizer, adj, epoch,
     data.reset_generator()
     data.shuffle_samples()
 
+    batch_losses = []
+    batch_accuracies = []
     batches = math.floor(data.n_samples/batch_size)
     final_batch = False
     for batch in range(batches):
@@ -64,29 +66,31 @@ def batch_train(data, model, optimizer, adj, epoch,
         labels = torch.cat(labels, dim = 0)
 
         loss_train = loss_function(output_tensor, labels)
+        acc_train = accuracy(output_tensor, labels)
+        batch_losses.append(float(loss_train))
+        batch_accuracies.append(acc_train)
+        
         loss_train.backward()
         optimizer.step()    
-
-    with torch.no_grad():
-        output = epoch_(model, data, adj)
-    loss_train = float(loss_function(output, data.labels))
-    acc_train = accuracy(output, data.labels)
     
     if testing_data:
-        loss_test, acc_test = test(testing_data, model, adj, loss_function)
+        loss_test, acc_test = test(testing_data, model, adj, 
+                                    loss_function, accuracy)
     else:
         loss_test = 'N/A'
         acc_test = 'N/A'
     
+    mean_loss_train = sum(batch_losses)/len(batch_losses)
+    mean_acc_train = sum(batch_accuracies)/len(batch_accuracies)
     logging.info(f'Epoch {epoch} complete\n' + \
                 f'\tTime taken = {time.time() - t}\n' + \
-                f'\tTraining Data Loss = {loss_train}\n' + \
-                f'\tTraining Data Accuracy = {acc_train}\n'
+                f'\tMean Training Data Loss = {mean_loss_train}\n' + \
+                f'\tMean Training Data Accuracy = {mean_acc_train}\n'
                 f'\tTesting Data Loss = {loss_test}\n' + \
                 f'\tTesting Data Accuracy = {acc_test}\n'
                 )
 
-    return model, (loss_train, acc_train, loss_test, acc_test)
+    return model, (mean_loss_train, mean_acc_train, loss_test, acc_test)
 
 
 def train(data, model, optimizer, adj, epoch, 
@@ -239,8 +243,8 @@ def main(args):
 
     training_data, testing_data, adj = load_data(data_dir)
 
-    model = GCNMaxPooling(n_feat = 1, conv_1 = 3, conv_2 = 3, n_hid = 20, 
-                        out_dim = 1, dropout = 0.3)
+    model = GCNMaxPooling(n_feat = 1, conv_1 = 3, conv_2 = 3, n_hid_1 = 50, 
+                        n_hid_2 = 25, out_dim = 1, dropout = 0.3)
 
     optimizer = optim.Adam(model.parameters(), lr = 0.001, 
                     weight_decay = 5e-4)
@@ -258,7 +262,7 @@ def main(args):
         model, epoch_results = batch_train(training_data, model, 
                                     optimizer, adj, epoch, loss_function, 
                                     accuracy, testing_data, 
-                                    batch_size = 250)
+                                    batch_size = 300)
         
         training_metrics.add(epoch_results)
         if epoch >= 20:
