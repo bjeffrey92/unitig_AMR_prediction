@@ -207,14 +207,13 @@ def load_features(rtab_file, mapping_dict, adj_tensor):
 
         i = 0
         for row in reader:
-            if row[0] in mapping_dict:
-                graph_nodes = mapping_dict[row[0]]
-                for j in range(1, len(row)): #first element of row is unitig number
-                    if row[j] == '1':
-                        for node in graph_nodes:
-                            x_idx.append(j - 1)
-                            y_idx.append(int(node))
-                            values.append(1)
+            graph_nodes = mapping_dict[row[0]]
+            for j in range(1, len(row)): #first element of row is unitig number
+                if row[j] == '1':
+                    for node in graph_nodes:
+                        x_idx.append(j - 1)
+                        y_idx.append(int(node))
+                        values.append(1)
             i += 1
             sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
             sys.stdout.flush()
@@ -256,22 +255,24 @@ def filter_unitigs(training_features, testing_features, adj):
     adj = adj.coalesce()
     x_idx = adj.indices()[0].tolist()
     y_idx = adj.indices()[1].tolist()
+    values = adj.values().tolist()
 
     #convert to dataframes to allow merging
-    df = pd.DataFrame({'x':x_idx, 'y':y_idx})
+    df = pd.DataFrame({'x':x_idx, 'y':y_idx, 'values': values})
     present_unitigs_df = pd.DataFrame({'graph_node':present_unitigs,
                                 'unitig_no':list(range(len(present_unitigs)))})
 
     #sequential merges to map graph nodes to position in the features matrix
     merged_df = df.merge(present_unitigs_df, left_on = 'x', 
-                        right_on = 'graph_node')[['x', 'y', 'unitig_no']]
+                        right_on = 'graph_node')[['x', 'y', 
+                                                'unitig_no', 'values']]
     merged_df = merged_df.merge(present_unitigs_df, left_on = 'y', 
                                 right_on = 'graph_node')
 
     #build new adjacency tensor
     indices = torch.FloatTensor([merged_df.unitig_no_x.to_list(), 
                                   merged_df.unitig_no_y.to_list()])
-    values = [1] * len(indices[0])
+    values = torch.FloatTensor(merged_df['values'].to_list())
     adj_tensor = torch.sparse_coo_tensor(indices, values)
     adj_tensor = adj_tensor.type(torch.FloatTensor)
 
