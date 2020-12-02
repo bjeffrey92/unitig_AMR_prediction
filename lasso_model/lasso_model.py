@@ -6,7 +6,8 @@ from sklearn.linear_model import Lasso
 from sklearn.exceptions import ConvergenceWarning
 from numpy import linspace
 
-from lasso_model.utils import load_training_data, load_testing_data, accuracy
+from lasso_model.utils import load_training_data, load_testing_data, \
+                            load_adjacency_matrix, accuracy, convolve
 
 import pickle
 import os 
@@ -18,9 +19,13 @@ logging.root.setLevel(logging.INFO)
 
 
 def CV(training_features, training_labels, 
-        testing_features, testing_labels, alphas: list) -> dict:
+        testing_features, testing_labels, alphas: list, adj = None) -> dict:
     
     accuracy_dict = {i:None for i in alphas}
+
+    if adj is not None:
+        training_features = convolve(training_features, adj)
+        testing_features = convolve(testing_features, adj)
 
     for a in alphas:
         logging.info(f'Fitting model for alpha = {a}')
@@ -86,14 +91,15 @@ if __name__ == '__main__':
 
         training_features, training_labels = load_training_data(data_dir)
         testing_features, testing_labels = load_testing_data(data_dir)
+        adj = load_adjacency_matrix(data_dir)
 
         alphas = linspace(0.01, 0.1, 10)
 
         accuracy_dict = CV(training_features, training_labels, 
                     testing_features, testing_labels, alphas)
 
-        fname = outcome + '_lasso_predictions.pkl'
+        fname = outcome + 'convolved_degree_normalised_lasso_predictions.pkl'
         save_output(accuracy_dict, fname)
 
-        fname = outcome + '_lasso_predictions.png'
+        fname = outcome + 'convolved_degree_normalised_lasso_predictions.png'
         plot_results(accuracy_dict, fname)

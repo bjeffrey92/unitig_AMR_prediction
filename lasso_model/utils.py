@@ -1,5 +1,6 @@
 import torch
 import os
+from functools import lru_cache
 import pandas as pd
 
 def load_training_data(data_dir):
@@ -16,3 +17,16 @@ def accuracy(predictions: torch.tensor, labels: torch.tensor):
     diff = predictions - labels
     correct = diff[[i < 1 for i in diff]]
     return len(correct)/len(predictions) * 100
+
+def load_adjacency_matrix(data_dir, degree_normalised = True):
+    if degree_normalised:
+        adj = torch.load(os.path.join(data_dir, 
+                                'degree_normalised_unitig_adjacency_tensor.pt'))
+    else:
+        adj = torch.load(os.path.join(data_dir, 'unitig_adjacency_tensor.pt'))
+    return adj
+
+@lru_cache()
+def convolve(features, adj):
+    x = torch.sparse.mm(adj, features.transpose(0,1))
+    return x.transpose(0,1)
