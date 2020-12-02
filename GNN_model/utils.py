@@ -18,8 +18,12 @@ def load_testing_data(data_dir, to_dense = True):
     labels = torch.load(os.path.join(data_dir, 'testing_labels.pt'))
     return features, labels
 
-def load_adjacency_matrix(data_dir):
-    adj = torch.load(os.path.join(data_dir, 'unitig_adjacency_tensor.pt'))
+def load_adjacency_matrix(data_dir, degree_normalised = True):
+    if degree_normalised:
+        adj = torch.load(os.path.join(data_dir, 
+                                'degree_normalised_unitig_adjacency_tensor.pt'))
+    else:
+        adj = torch.load(os.path.join(data_dir, 'unitig_adjacency_tensor.pt'))
     return adj
 
 def load_labels_2(data_dir, countries = True, families = False):
