@@ -72,12 +72,12 @@ class GCNMaxPooling(nn.Module):
 
 class GCNPerNode(nn.Module):
     def __init__(self, n_feat, n_hid_1, n_hid_2, out_dim, dropout, 
-                n_hid_3 = None):
+                n_hid_3 = 0):
         super(GCNPerNode, self).__init__()
 
         self.gc = GraphConvolutionPerNode(n_feat, n_hid_1)
         self.linear1 = nn.Linear(n_hid_1, n_hid_2)
-        if n_hid_3:
+        if n_hid_3 > 0:
             self.linear2 = nn.Linear(n_hid_2, n_hid_3)
             self.linear3 = nn.Linear(n_hid_3, out_dim)
         else:
