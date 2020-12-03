@@ -39,20 +39,19 @@ def train_evaluate(Ab, params):
 
     n_hid_1 = round(params['n_hid_1'])
     n_hid_2 = round(params['n_hid_2'])
-    n_hid_3 = round(params['n_hid_3'])
     dropout = params['dropout']
-    l1_alpha = params['l1_alpha']
     l2_alpha = params['l2_alpha']
+    lr = params['lr']
 
     data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
 
     training_data, testing_data, adj = load_data(data_dir)
 
     model = models.GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = n_hid_1, 
-                        n_hid_2 = n_hid_2, n_hid_3 = n_hid_3, 
+                        n_hid_2 = n_hid_2, n_hid_3 = 0, 
                         out_dim = 1, dropout = dropout)
 
-    optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
+    optimizer = optim.Adam(model.parameters(), lr = lr, 
                     weight_decay = l2_alpha) #weight decay is l2 loss
     loss_function = nn.MSELoss()
 
@@ -62,7 +61,7 @@ def train_evaluate(Ab, params):
         
         model, epoch_results = train.train(training_data, model, 
                                     optimizer, adj, epoch, loss_function, 
-                                    utils.accuracy, l1_alpha, 
+                                    utils.accuracy, l1_alpha = None, 
                                     testing_data = testing_data)
         training_metrics.add(epoch_results)
 
@@ -82,10 +81,9 @@ def optimise_hps(Ab):
 
     space = {'n_hid_1': hyperopt.hp.uniform('n_hid_1', 10, 80),
             'n_hid_2': hyperopt.hp.uniform('n_hid_2', 10, 80),
-            'n_hid_3': hyperopt.hp.uniform('n_hid_3', 0, 50),
-            'dropout': hyperopt.hp.uniform('dropout', 0.2, 0.6),
-            'l1_alpha': hyperopt.hp.uniform('l1_alpha', 0.01, 0.15),
-            'l2_alpha': hyperopt.hp.uniform('l2_alpha', 1e-4, 1e-3)
+            'dropout': hyperopt.hp.uniform('dropout', 0.2, 0.7),
+            'l2_alpha': hyperopt.hp.uniform('l2_alpha', 1e-4, 1e-3),
+            'lr': hyperopt.hp.uniform('lr', 1e-5, 5e-3)
             }
     
     trials = hyperopt.Trials()
@@ -93,7 +91,7 @@ def optimise_hps(Ab):
                     space, 
                     trials = trials, 
                     algo = hyperopt.tpe.suggest,
-                    max_evals = 50)
+                    max_evals = 100)
 
     return trials
 
@@ -118,7 +116,7 @@ def plot_chains(trials, fig_name):
     
 
 if __name__ == '__main__':
-    Ab = 'log2_azm_mic'
+    Ab = 'log2_cro_mic'
 
     start_time = time.time()
     trials = optimise_hps(Ab)
