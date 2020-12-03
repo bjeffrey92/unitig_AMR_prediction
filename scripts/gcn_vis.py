@@ -10,10 +10,10 @@ def colour_code(N, max_attr):
     hex_code = '#%02x%02x%02x' % (int(i * N), int(255 - i * N), 255) 
     return hex_code
 
-def plot_graph(graph, layout, max_attr):
+def plot_graph(graph, layout, max_attr, with_labels = False):
     G = nx.Graph(graph) #shallow copy
     colour_map = [colour_code(G.nodes[node]['attr'], max_attr) for node in G]
-    nx.draw(G, pos = layout, node_color = colour_map,  with_labels = False)
+    nx.draw(G, pos = layout, node_color = colour_map,  with_labels = with_labels)
     plt.show()
 
 def get_attribute_vector(graph):
