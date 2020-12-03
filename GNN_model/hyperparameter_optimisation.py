@@ -5,6 +5,7 @@ import os
 import torch.nn as nn
 import torch.optim as optim
 import logging
+import matplotlib.pyplot as plt
 from functools import lru_cache
 from GNN_model import train, utils, models
 
@@ -67,7 +68,7 @@ def train_evaluate(Ab, params):
 
         #if testing data accuracy has plateaued
         if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
-                if i < 0.1]) >= 10:
+                if i < 0.1]) >= 10 and epoch > 30:
             break
 
     #returns average testing data loss in the last five epochs
@@ -84,8 +85,7 @@ def optimise_hps(Ab):
             'n_hid_3': hyperopt.hp.uniform('n_hid_3', 0, 50),
             'dropout': hyperopt.hp.uniform('dropout', 0.2, 0.6),
             'l1_alpha': hyperopt.hp.uniform('l1_alpha', 0.01, 0.15),
-            'l2_alpha': hyperopt.hp.uniform('l2_alpha', 1e-4, 1e-3),
-            'Ab': 'log2_azm_mic'
+            'l2_alpha': hyperopt.hp.uniform('l2_alpha', 1e-4, 1e-3)
             }
     
     trials = hyperopt.Trials()
@@ -97,6 +97,26 @@ def optimise_hps(Ab):
 
     return trials
 
+
+def plot_chains(trials, fig_name):
+    '''
+    Plots markov chain of each hyperparam and the loss
+    '''
+    x = list(range(len(trials.losses()))) #indices
+
+    #plots for the number of parameters plus the loss
+    fig, axs = plt.subplots(len(trials.vals) + 1, sharex = True) 
+
+    axs[0].plot(x, trials.losses())
+    axs[0].set_ylabel('loss')
+    for i, key in enumerate(trials.vals):
+        y = trials.vals[key]
+        axs[i + 1].plot(x, y)
+        axs[i + 1].set_ylabel(key)
+
+    fig.savefig(fig_name)
+    
+
 if __name__ == '__main__':
     Ab = 'log2_azm_mic'
 
@@ -106,3 +126,5 @@ if __name__ == '__main__':
 
     with open(f'{Ab}_gnn_hp_optimisation_trials.pkl', 'wb') as a:
         pickle.dump(trials, a)
+
+    plot_chains(trials, f'{Ab}_gnn_hp_optimisation_markov_chains.png')
