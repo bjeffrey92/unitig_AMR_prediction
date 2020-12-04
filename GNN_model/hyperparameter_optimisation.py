@@ -37,6 +37,8 @@ def load_data(data_dir, normed_adj_matrix = True, global_node = False):
 
 def train_evaluate(Ab, params):
 
+    print(params) 
+
     n_hid_1 = round(params['n_hid_1'])
     n_hid_2 = round(params['n_hid_2'])
     dropout = params['dropout']

@@ -3,6 +3,28 @@ import torch.nn as nn
 import torch.nn.functional as F
 from GNN_model.layers import GraphConvolution, GraphConvolutionPerNode
 
+class GraphEdgeWiseAttention(nn.Module):
+
+    def __init__(self, adj, n_nodes, out_dim):
+        super(GraphEdgeWiseAttention, self).__init__()
+        
+        self.n_nodes = n_nodes
+        self.out_dim = out_dim
+        adj = adj.coalesce()
+        self.w = nn.Parameter(torch.empty(size=(len(adj.values()), 1)))
+        nn.init.uniform_(self.w.data, 0, 1)
+        self.adj = torch.sparse_coo_tensor(adj.indices(), self.w.squeeze(1)) 
+        self.ones = torch.ones((out_dim,n_nodes))
+
+    def forward(self, layer_input):
+        x = torch.relu(torch.sparse.mm(self.adj, layer_input))
+        out = torch.sigmoid(torch.mm(self.ones, x))[0][0]
+        return out
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.n_nodes) + ' -> ' \
+               + str(self.out_dim) + ')'
 
 class GCNGlobalNode(nn.Module):
     def __init__(self, n_feat, conv_1, n_hid, out_dim, dropout):

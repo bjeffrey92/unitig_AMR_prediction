@@ -2,11 +2,22 @@ import pickle
 import networkx as nx
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.optim as optim
 import random
+import os
+import time
+import logging
 from scipy import sparse
 from torch_sparse import SparseTensor
 
 from scripts import gcn_vis
+from GNN_model import utils
+from GNN_model.models import GraphEdgeWiseAttention
+
+
+logging.basicConfig()
+logging.root.setLevel(logging.INFO)
 
 
 def convert_to_tensor(matrix, torch_sparse_coo = True):
@@ -70,15 +81,115 @@ def create_data(G, out_dir):
     training_labels = training_labels.to(torch.float32)
     testing_labels = testing_labels.to(torch.float32)
 
-    torch.save(adj_tensor, 'dummy_data/unitig_adjacency_tensor.pt')
-    torch.save(training_features.to_sparse(), 'dummy_data/training_features.pt')
-    torch.save(testing_features.to_sparse(), 'dummy_data/testing_features.pt')
-    torch.save(training_labels, 'dummy_data/training_labels.pt')
-    torch.save(testing_labels, 'dummy_data/testing_labels.pt')
+    torch.save(adj_tensor, os.path.join(out_dir, 'unitig_adjacency_tensor.pt'))
+    torch.save(training_features.to_sparse(), 
+            os.path.join(out_dir, 'training_features.pt'))
+    torch.save(testing_features.to_sparse(), 
+            os.path.join(out_dir, 'testing_features.pt'))
+    torch.save(training_labels, 
+            os.path.join(out_dir, 'training_labels.pt'))
+    torch.save(testing_labels, 
+            os.path.join(out_dir, 'testing_labels.pt'))
+
+
+def load_data(data_dir, normed_adj_matrix = False):
+    adj = utils.load_adjacency_matrix(data_dir, normed_adj_matrix)
+    
+    training_features, training_labels = utils.load_training_data(data_dir)
+    testing_features, testing_labels = utils.load_testing_data(data_dir)
+    assert training_features.shape[1] == testing_features.shape[1], \
+        'Dimensions of training and testing data not equal'
+    
+    training_data = utils.DataGenerator(training_features, training_labels, 
+                                global_node = False)
+    testing_data = utils.DataGenerator(testing_features, testing_labels, 
+                                global_node = False)
+
+    return training_data, testing_data, adj
+
+
+def accuracy(predictions, labels):
+    predictions = torch.round(predictions)
+    return int(sum(labels == predictions))/len(predictions) * 100
+
+
+def epoch_(model, data):
+    data.reset_generator()
+   
+    outputs = [None] * data.n_samples
+    for i in range(data.n_samples):
+        features = data.next_sample()[0]
+        outputs[i] = model(features).unsqueeze(0)
+
+    output_tensor = torch.cat(outputs, dim = 0)
+    
+    return output_tensor
+
+
+def test(data, model, adj, loss_function, accuracy):
+    data.reset_generator()
+    model.train(False)
+    
+    with torch.no_grad():
+        output = epoch_(model, data)
+    loss = float(loss_function(output, data.labels))
+    acc = accuracy(output, data.labels)
+
+    return loss, acc
+
+
+def train(data, model, optimizer, adj, epoch, 
+        loss_function, testing_data = None):
+    t = time.time()
+    model.train()
+    optimizer.zero_grad()
+    data.shuffle_samples()
+
+    output = epoch_(model, data)
+    loss_train = loss_function(output, data.labels)
+    acc_train = accuracy(output, data.labels)
+
+    if testing_data:
+        loss_test, acc_test = test(testing_data, model, 
+                                    adj, loss_function, accuracy)
+    else:
+        loss_test = 'N/A'
+        acc_test = 'N/A'        
+
+    loss_train.backward(retain_graph = True)
+    optimizer.step()
+    loss_train = float(loss_train) #to write it to file
+
+    logging.info(f'Epoch {epoch} complete\n' + \
+                f'\tTime taken = {time.time() - t}\n' + \
+                f'\tTraining Data Loss = {loss_train}\n' + \
+                f'\tTraining Data Accuracy = {acc_train}\n'
+                f'\tTesting Data Loss = {loss_test}\n' + \
+                f'\tTesting Data Accuracy = {acc_test}\n'
+                )
+
+    return model, (loss_train, acc_train, loss_test, acc_test)
 
 
 if __name__ == '__main__':
     with open('smaller_graph.pkl', 'rb') as a:
         G = pickle.load(a)
+    data_dir = 'dummy_data'
+    create_data(G, data_dir)
 
-    create_data(G)
+    training_data, testing_data, adj = load_data(data_dir)
+
+    model = GraphEdgeWiseAttention(adj, training_data.n_nodes, 1)
+    optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
+                        weight_decay = 5e-4) 
+    loss_function = nn.BCELoss()
+
+    training_metrics = utils.MetricAccumulator() 
+    for epoch in range(500):
+        epoch += 1
+    
+        model, epoch_results = train(training_data, model, 
+                                    optimizer, adj, epoch, loss_function,
+                                    testing_data)
+
+        training_metrics.add(epoch_results)

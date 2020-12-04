@@ -3,7 +3,7 @@ import torch
 from torch.nn.modules.module import Module
 
 class GraphConvolution(Module):
-
+    #arxiv.org/abs/1609.02907
     def __init__(self, in_features, out_features):
         super(GraphConvolution, self).__init__()
         self.in_features = in_features
