@@ -6,6 +6,8 @@ import networkx as nx
 import numpy as np
 
 def colour_code(N, max_attr):
+    if N == 'present':
+        return 'green'
     i = 255/max_attr
     hex_code = '#%02x%02x%02x' % (int(i * N), int(255 - i * N), 255) 
     return hex_code
@@ -13,14 +15,15 @@ def colour_code(N, max_attr):
 def plot_graph(graph, layout, max_attr, with_labels = False):
     G = nx.Graph(graph) #shallow copy
     colour_map = [colour_code(G.nodes[node]['attr'], max_attr) for node in G]
-    nx.draw(G, pos = layout, node_color = colour_map,  with_labels = with_labels)
+    nx.draw(G, node_size = 150, pos = layout, node_color = colour_map,  
+            with_labels = with_labels)
     plt.show()
 
 def get_attribute_vector(graph):
     return np.array([graph.nodes[node]['attr'] for node in graph])
 
 def set_attributes(graph, attributes):
-    assert len(attributes) == len(G)
+    assert len(attributes) == len(graph)
     i = 0
     for node in graph:
         graph.nodes[node]['attr'] = float(attributes[i])

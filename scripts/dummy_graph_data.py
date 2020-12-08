@@ -46,8 +46,13 @@ def create_data(G, out_dir):
     adj_sparse = sparse.csr_matrix(adj)
     adj_tensor = convert_to_tensor(adj_sparse.tocoo())
 
-    gene_1_nodes = [17637, 7034, 236673, 2915]
-    gene_2_nodes = [367704, 70817, 21675, 291384]
+    #small graph 1 nodes
+    # gene_1_nodes = [22, 5, 17, 18]
+    # gene_2_nodes = [14, 1, 12, 10]
+
+    #small graph 2 nodes
+    gene_1_nodes = [116, 20, 6, 123]
+    gene_2_nodes = [70, 69, 0, 49]
 
     labels = []
     features = []
@@ -57,14 +62,17 @@ def create_data(G, out_dir):
             if node in gene_1_nodes + gene_2_nodes:
                 G.nodes[node]['attr'] = 1.0 #label nodes of two 'genes'
             else:
-                G.nodes[node]['attr'] = float(np.random.binomial(1, 2/n_nodes)) #noise
+                G.nodes[node]['attr'] = float(np.random.binomial(1, 0.5)) #noise
         labels.append(1)
         features.append(gcn_vis.get_attribute_vector(G))
 
-    #make non resistant samples with random unitigs
+    #make non resistant samples with random unitigs except for resistance unitigs
     for i in range(250):
         for node in G:
-            G.nodes[node]['attr'] = float(np.random.binomial(1, 10/n_nodes)) 
+            if node in gene_1_nodes + gene_2_nodes:
+                G.nodes[node]['attr'] = 0.0 #label nodes of two 'genes'
+            else:
+                G.nodes[node]['attr'] = float(np.random.binomial(1, 0.5)) #noise
         labels.append(0)
         features.append(gcn_vis.get_attribute_vector(G))
 
@@ -107,6 +115,35 @@ def load_data(data_dir, normed_adj_matrix = False):
 
     return training_data, testing_data, adj
 
+
+def demo_perfect_attention(features, adj_tensor, G):
+    #small graph 2 nodes
+    gene_1_nodes = [116, 20, 6, 123]
+    gene_2_nodes = [70, 69, 0, 49]
+
+    r = adj_tensor.indices()[0].tolist()
+    c = adj_tensor.indices()[1].tolist()
+
+    indices = []
+    for i in gene_1_nodes:
+        l = [i for i, x in enumerate(r) if x in gene_1_nodes]
+        indices += [i for i, x in enumerate(c) if x in gene_1_nodes and i in l]
+    for i in gene_2_nodes:
+        l = [i for i, x in enumerate(r) if x in gene_2_nodes]
+        indices += [i for i, x in enumerate(c) if x in gene_2_nodes and i in l]
+
+    values =  torch.Tensor([x if i in indices else 0 for i, x in 
+                    enumerate(adj_tensor.values().tolist())])
+
+    #the ideal weights for the learned adjacency matrix
+    adj_perf = SparseTensor(row = torch.LongTensor(r), 
+                            col = torch.LongTensor(c),
+                            value = values).to_torch_sparse_coo_tensor()
+
+    features_hat = torch.sparse.mm(adj_perf, features)
+    G_hat = gcn_vis.set_attributes(G,  features_hat.squeeze(1).tolist())
+
+    # gcn_vis.plot_graph(G_hat, )
 
 def accuracy(predictions, labels):
     predictions = torch.round(predictions)
@@ -172,15 +209,18 @@ def train(data, model, optimizer, adj, epoch,
 
 
 if __name__ == '__main__':
-    with open('smaller_graph.pkl', 'rb') as a:
-        G = pickle.load(a)
-    data_dir = 'dummy_data'
-    create_data(G, data_dir)
+    data_dir = 'dummy_data/small_graph_2/'
+    
+    # with open('dummy_data/small_graph_2.pkl', 'rb') as a:
+    #     G = pickle.load(a)
+    # mapping = {sorted(G)[i]:i for i in range(len(G))}
+    # G = nx.relabel_nodes(G, mapping)
+    # create_data(G, data_dir)
 
     training_data, testing_data, adj = load_data(data_dir)
 
     model = GraphEdgeWiseAttention(adj, training_data.n_nodes, 1)
-    optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
+    optimizer = optim.Adam(model.parameters(), lr = 0.001, 
                         weight_decay = 5e-4) 
     loss_function = nn.BCELoss()
 
