@@ -4,17 +4,25 @@ import random
 import logging
 import numpy as np
 
-def load_training_data(data_dir, to_dense = True):
-    features = torch.load(os.path.join(data_dir, 'training_features.pt'))
-    if to_dense:
-        features = features.to_dense()
+def load_training_data(data_dir, k = None, to_dense = True):
+    if k is not None:
+        features = torch.load(os.path.join(data_dir, 
+                                        f'{k}_convolved_training_features.pt'))    
+    else:
+        features = torch.load(os.path.join(data_dir, 'training_features.pt'))
+        if to_dense:
+            features = features.to_dense()
     labels = torch.load(os.path.join(data_dir, 'training_labels.pt'))
     return features, labels
 
-def load_testing_data(data_dir, to_dense = True):
-    features = torch.load(os.path.join(data_dir, 'testing_features.pt'))
-    if to_dense:
-        features = features.to_dense()
+def load_testing_data(data_dir, k = None, to_dense = True):
+    if k is not None:
+        features = torch.load(os.path.join(data_dir, 
+                                    f'{k}_convolved_testing_features.pt'))    
+    else:
+        features = torch.load(os.path.join(data_dir, 'testing_features.pt'))
+        if to_dense:
+            features = features.to_dense()
     labels = torch.load(os.path.join(data_dir, 'testing_labels.pt'))
     return features, labels
 
@@ -59,9 +67,6 @@ def write_epoch_results(epoch, epoch_results, summary_file):
         line = str(epoch) + '\t' + '\t'.join([str(i) for i in epoch_results])
         a.write(line + '\n')
 
-def save_model(model, filename):
-    torch.save(model, filename)
-
 def accuracy(predictions: torch.tensor, labels: torch.tensor):
     diff = abs(predictions - labels)
     correct = diff[[i < 1 for i in diff]]
@@ -84,10 +89,10 @@ def R_or_S(MIC, boundary):
     return [0 if 2**i <= boundary else 1 for i in MIC]
 
 def sensitivity():
-    pass
+    raise NotImplementedError
 
 def specificity():
-    pass
+    raise NotImplementedError
 
 #custom loss function 
 def logcosh(true, pred):
@@ -120,10 +125,14 @@ def add_global_node(adj):
 
 class DataGenerator():
     def __init__(self, features, labels, labels_2 = None, 
-                auto_reset_generator = True, global_node = True):
+                auto_reset_generator = True, global_node = True, 
+                pre_convolved = False):
         assert len(features) == len(labels), \
             'Features and labels are of different length'
-        self.features = self._parse_features(features, global_node)
+        if pre_convolved:
+            self.features = features
+        else:
+            self.features = self._parse_features(features, global_node)
         self.labels = labels + min(abs(labels)) #make +ve so relu can be used on final layer
         self.n_nodes = self.features[0].shape[0]
         self.n_samples = len(labels)

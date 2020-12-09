@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from GNN_model.utils import load_training_data, load_testing_data, \
-                            load_adjacency_matrix, save_model, accuracy,\
+                            load_adjacency_matrix, accuracy,\
                             logcosh, write_epoch_results, DataGenerator, \
                             MetricAccumulator, add_global_node
 from GNN_model.models import GCNMaxPooling, GCNPerNode
@@ -146,25 +146,34 @@ def test(data, model, adj, loss_function, accuracy):
     return loss, acc
 
 
-def load_data(data_dir, normed_adj_matrix = True, global_node = False):
-    adj = load_adjacency_matrix(data_dir, normed_adj_matrix)
-    
-    #adds node which is connected to all others
-    #required for gcn without max pooling layers
-    if global_node:
-        adj = add_global_node(adj)
-    
-    training_features, training_labels = load_training_data(data_dir)
-    testing_features, testing_labels = load_testing_data(data_dir)
+def load_data(data_dir, k = None, 
+            normed_adj_matrix = True, global_node = False):
+    training_features, training_labels = load_training_data(data_dir, k = k)
+    testing_features, testing_labels = load_testing_data(data_dir, k = k)
     assert training_features.shape[1] == testing_features.shape[1], \
         'Dimensions of training and testing data not equal'
     
-    training_data = DataGenerator(training_features, training_labels, 
-                                global_node = global_node)
-    testing_data = DataGenerator(testing_features, testing_labels, 
-                                global_node = global_node)
-
-    return training_data, testing_data, adj
+    if k is not None:
+        training_data = DataGenerator(training_features, training_labels, 
+                                    global_node = global_node,
+                                    pre_convolved = True)
+        testing_data = DataGenerator(testing_features, testing_labels, 
+                                    global_node = global_node,
+                                    pre_convolved = True)
+        return training_data, testing_data
+    else:
+        training_data = DataGenerator(training_features, training_labels, 
+                                    global_node = global_node)
+        testing_data = DataGenerator(testing_features, testing_labels, 
+                                    global_node = global_node)
+        adj = load_adjacency_matrix(data_dir, normed_adj_matrix)
+        
+        #adds node which is connected to all others
+        #required for gcn without max pooling layers
+        if global_node:
+            adj = add_global_node(adj)
+        
+        return training_data, testing_data, adj
 
 
 def parse_args():
@@ -256,7 +265,8 @@ def main(args):
     Ab = 'log2_azm_mic'
     data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
 
-    training_data, testing_data, adj = load_data(data_dir)
+    # training_data, testing_data, adj = load_data(data_dir)
+    training_data, testing_data = load_data(data_dir, k = 4)
 
     model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50, 
                         n_hid_2 = 50, out_dim = 1, dropout = 0.3)
