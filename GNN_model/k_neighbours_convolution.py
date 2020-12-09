@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
+import warnings
 from torch_sparse import SparseTensor
 from scipy.sparse import identity, csr_matrix, coo_matrix
 
@@ -12,7 +13,9 @@ def get_k_neighbours(adj_tensor:torch.tensor, k: int):
     if type(k) != int:
         raise TypeError('K must be an integer')
     if k == 1:
-        raise Warning('K == 1, therefore adjacency matrix will be returned')
+        warnings.warn(
+            'K == 1, therefore just adjacency matrix and self loops will be returned',
+                    RuntimeWarning)
     elif k < 1:
         raise ValueError('K must be at least 1')
     
@@ -51,25 +54,26 @@ def get_k_neighbours(adj_tensor:torch.tensor, k: int):
         k_neighbours_matrix = k_neighbours_matrix.tocoo()
         row = k_neighbours_matrix.row[k_neighbours_matrix.data == 1]
         col = k_neighbours_matrix.col[k_neighbours_matrix.data == 1]
-        data = np.ones(len(row))
+        data = np.ones(len(row)) * k_
         N = max(row) + 1
         k_neighbours_dict[k_] = coo_matrix((data, (row, col)), shape=(N, N))
 
     #improve searchability
     def convert_to_dataframes(matrix):
-        return pd.DataFrame({'row': matrix.row, 'col':matrix.col})
-    k_neighbours_dict = {k_:convert_to_dataframes(v) 
-                            for k_,v in k_neighbours_dict.items()}
+        return pd.DataFrame({'row': matrix.row, 
+                            'col':matrix.col, 
+                            'k': matrix.data})
+    k_neighbours = pd.concat([convert_to_dataframes(v) 
+                            for v in k_neighbours_dict.values()]) #return as a single dataframe
 
-    return k_neighbours_dict
+    return k_neighbours
 
 
-def build_neighbourhoods(features, k_neighbours_dict):
+def build_neighbourhoods(features, k_neighbours):
     def extract_neighbours(df):
         return df.col.tolist()
 
-    for k, df in k_neighbours_dict.items():
-        df.groupby('row').apply(extract_neighbours)
+    k_neighbours.groupby('row').apply(extract_neighbours)
 
 
 if __name__ == '__main__':
@@ -79,4 +83,4 @@ if __name__ == '__main__':
     testing_data = load_testing_data(data_dir)
 
     k = 4
-    k_neighbours_dict = get_k_neighbours(adj_tensor, k)
+    k_neighbours = get_k_neighbours(adj_tensor, k)
