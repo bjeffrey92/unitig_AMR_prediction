@@ -1,6 +1,42 @@
 import math
 import torch
+import numpy as np
 from torch.nn.modules.module import Module
+
+
+class PreSelectionConvolution(Module):
+    def __init__(self, n_nodes, n_neighbours):
+        super(PreSelectionConvolution, self).__init__()
+        self.n_nodes = n_nodes
+        self.n_neighbours = n_neighbours
+
+        w = torch.zeros(n_nodes, n_neighbours) #plus one because first neighbour is self
+        b = torch.zeros(n_nodes)
+        self.weight = torch.nn.Parameter(w)
+        self.bias = torch.nn.Parameter(b)
+
+        torch.nn.init.xavier_uniform_(self.weight)
+        torch.nn.init.normal_(self.bias)
+
+    def sparse_dense_mul(self, s, d):
+        '''
+        Element wise multiplication
+        '''
+        i = s._indices()
+        v = s._values()
+        dv = d[i[0,:], i[1,:]]  # get values from relevant entries of dense matrix
+        return torch.sparse.FloatTensor(i, v * dv, s.size())
+
+    def forward(self, layer_input):
+        x = self.sparse_dense_mul(layer_input, self.weight)
+        x = torch.sparse.sum(x, 1) 
+        return self.bias + x 
+
+    def __repr__(self):
+        return self.__class__.__name__ + ' (' \
+               + str(self.n_nodes) + ','+ str(self.n_neighbours) + ' -> ' \
+               + str(self.n_nodes) + ')'
+
 
 class GraphConvolution(Module):
     #arxiv.org/abs/1609.02907

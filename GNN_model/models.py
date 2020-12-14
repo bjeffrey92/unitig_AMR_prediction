@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from GNN_model.layers import GraphConvolution, GraphConvolutionPerNode
+from GNN_model.layers import GraphConvolution, GraphConvolutionPerNode, \
+                            PreSelectionConvolution
 
 class GraphEdgeWiseAttention(nn.Module):
 
@@ -119,6 +120,31 @@ class GCNPerNode(nn.Module):
         else:
             out = F.leaky_relu(self.linear2(x)[0][0])
         return out
+
+
+class PreConvolutionNN(nn.Module):
+    def __init__(self, n_nodes, n_neighbours, dropout, out_dim = 1):
+        super(PreConvolutionNN, self).__init__()
+
+        self.conv = PreSelectionConvolution(n_nodes, n_neighbours)
+        self.linear1 = nn.Linear(n_nodes, out_dim)
+        self.dropout = dropout
+
+    #adj included for consistency with training functions, simplifies training
+    def forward(self, x, adj = None): 
+        x = F.leaky_relu(self.conv(x))
+        F.dropout(x, self.dropout, inplace = True, training = True)
+        out = self.linear1(x)[0]
+        return out
+
+
+class LinearConv(nn.Module):
+    def __init__(self, k, n_nodes):
+        super(LinearConv, self).__init__()
+        self.linear1 = nn.Linear(k * n_nodes, 1)
+    def forward(self, x, adj = None):
+        x = x.flatten(0).unsqueeze(1)
+        return self.linear1(x.transpose(0,1))[0][0]
 
 
 class VanillaNN(nn.Module):
