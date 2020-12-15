@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import warnings
 import sys
+import pickle
 from torch_sparse import SparseTensor
 from scipy.sparse import identity, csr_matrix, coo_matrix
 
@@ -67,6 +68,7 @@ def get_k_neighbours(adj_tensor:torch.tensor, k: int):
                             'k': matrix.data})
     k_neighbours = pd.concat([convert_to_dataframes(v) 
                             for v in k_neighbours_dict.values()]) #return as a single dataframe
+    k_neighbours.reset_index(inplace = True, drop = True)
 
     return k_neighbours
 
@@ -82,64 +84,105 @@ def get_max_k_neighbours(k_neighbours):
     return k_neighbour_counts.groupby(['k']).apply(max_n).to_dict()
 
 
-def build_neighbourhoods(features, k_neighbours, k_neighbour_counts):
-    features_T = features.transpose(0,1)
-    features_df = pd.DataFrame(features_T.tolist()) 
+def build_neighbourhoods(k_neighbours, k_neighbour_counts):
+    '''
+    Returns indices for neighbourhoods, which is the k step neighbours of each 
+    node up to the maximum number neighbours for each value k of any node
+    '''
+    #get columns linked to each row by k steps as a list
+    def get_cols(df):
+        return df.col.tolist()
+    cols_per_k_and_row = k_neighbours.groupby(['row', 'k']).apply(get_cols)
+    cols_per_k_and_row = cols_per_k_and_row.reset_index()
 
-    #padding with negative one so it can be discerned from 0 in the data
-    padding = np.zeros(len(features))
-    padding_expanaded = np.expand_dims(padding, 0)
-    def get_neighbourhood_tensor(df):
-        neighbourhood = [features_df.iloc[
-                            df.loc[df.k == k].col.to_list()].to_numpy() 
-                                for k in df.k.unique()] #all k step neighbours of given node in f
+    n_nodes = max(k_neighbours.row) + 1
+
+    #get indices of the nodes for each step k
+    def k_wise_neighbourhoods(df):
+        k = df.k.iloc[0]
+        k_max = k_neighbour_counts[k]     
         
-        #pad neighbourhood with negative one where there are missing values
-        if len(neighbourhood) < k + 1:
-             neighbourhood += [padding_expanaded] * (k + 1 - len(neighbourhood))
-        for i in range(len(neighbourhood)):
-            padding_needed = k_neighbour_counts[i + 1] - len(neighbourhood[i])
-            if padding_needed > 0:
-                neighbourhood[i] = np.vstack((neighbourhood[i], 
-                                        np.tile(padding, (padding_needed,1))))
-        return torch.cat([torch.FloatTensor(i) for i in neighbourhood])
+        def nth_element(x, n):
+            try:
+                return x[n]
+            except IndexError: pass
+        out = []
+        for n in range(k_max):
+            indices = df[0].apply(lambda x: nth_element(x, n)).tolist()
+            out.append([i for i in indices if not pd.isna(i)])
 
-    neighbourhood_tensors_dict = {}
-    nodes = max(k_neighbours.row)
-    for row, df in k_neighbours.groupby(['row']):
-        neighbourhood_tensors_dict[row] = get_neighbourhood_tensor(df) #tensor of all neighbours for one node in the graph for each sample
-        print(f'\r{row}/{nodes} nodes processed', end = '', flush = True)
+        return out
 
-    #ensure neighbourhood tensors are ordered by node 
-    neighbourhood_tensors = [neighbourhood_tensors_dict[i].transpose(0,1) 
-                            for i in sorted(neighbourhood_tensors_dict.keys())]
-    neighbourhood_tensors = torch.stack(neighbourhood_tensors).transpose(0)
-    
-    return [n.to_sparse() for n in neighbourhood_tensors]
+    #dictionary of the indices of the neighbours for each step in the neighbourhood
+    neighbourhoods_dict = {}
+    for k, df in cols_per_k_and_row.groupby('k'):
+        neighbourhoods_dict[k] = k_wise_neighbourhoods(df)
+        
+    return neighbourhoods_dict
+
+
+def feature_neighbourhoods(features, neighbourhoods_dict, k_neighbours,
+                            k_neighbour_counts):
+    features_df = pd.DataFrame(features)
+
+    tensor_size = (len(features_df.columns), 
+                    sum(k_neighbour_counts.values()))
+    max_values = len(k_neighbours)
+    def get_sparse_neighbourhood_tensor(f):
+        indices_0 = [None] * max_values
+        indices_1 = [None] * max_values
+        N = 0
+        d = 0
+        for k in sorted(neighbourhoods_dict.keys()):
+            k_indices = neighbourhoods_dict[k]
+            for n in k_indices:
+                f_2 = f.iloc[n]
+                ones = list(f_2.loc[f_2 == 1].index)
+                indices_0[N:len(ones)] = ones
+                indices_1[N:len(ones)] = [d] * len(ones)
+                N += len(ones)
+                d += 1
+        indices = [indices_0[:N], indices_1[:N]]
+        return torch.sparse_coo_tensor(indices, np.ones(N), size = tensor_size)
+
+    sparse_feature_tensors = features_df.apply(get_sparse_neighbourhood_tensor, 
+                                                axis = 1)
+
+    return sparse_feature_tensors.tolist()
 
 
 if __name__ == '__main__':
     # Ab = sys.argv[1]
-    # train_test = sys.argv[2]
-    Ab = 'log2_azm_mic'
+    train_test = 1
 
-    data_dir = f'data/model_inputs/freq_5_95/{Ab}/'    
-    adj_tensor = load_adjacency_matrix(data_dir, degree_normalised = False)
+    Abs = ['log2_azm_mic',
+        'log2_cip_mic',
+        'log2_cro_mic',
+        'log2_cfx_mic']
+    for Ab in Abs:
+        data_dir = f'data/model_inputs/freq_5_95/{Ab}/'    
+        adj_tensor = load_adjacency_matrix(data_dir, degree_normalised = False)
 
-    k = 3
-    k_neighbours = get_k_neighbours(adj_tensor, k) #values is #steps - 1
-    k_neighbour_counts = get_max_k_neighbours(k_neighbours)
+        k = 3
+        k_neighbours = get_k_neighbours(adj_tensor, k) #values is #steps - 1
+        k_neighbour_counts = get_max_k_neighbours(k_neighbours)
+        neighbourhoods_dict = build_neighbourhoods(k_neighbours, k_neighbour_counts)
 
-    # if int(train_test) == 1:
-    training_data = load_training_data(data_dir)[0]
-    training_features = build_neighbourhoods(training_data, k_neighbours, 
-                                            k_neighbour_counts)
-    torch.save(training_features, 
-            f'{data_dir}{k}_convolved_training_features.pt')
-    # else:
-    testing_data = load_testing_data(data_dir)[0]
-    testing_features = build_neighbourhoods(testing_data, k_neighbours,
-                                            k_neighbour_counts)
-    torch.save(testing_features, 
-            f'{data_dir}{k}_convolved_testing_features.pt')
+        if int(train_test) == 1:
+            training_data = load_training_data(data_dir)[0].tolist()
+            training_features = feature_neighbourhoods(training_data, 
+                                                    neighbourhoods_dict, 
+                                                    k_neighbours,
+                                                    k_neighbour_counts)
+            with open(f'{data_dir}{k}_convolved_training_features.pt', 'wb') as a:
+                pickle.dump(training_features, a)                    
+
+        else:
+            testing_data = load_testing_data(data_dir)[0].tolist()
+            testing_features = feature_neighbourhoods(testing_data, 
+                                                    neighbourhoods_dict, 
+                                                    k_neighbours,
+                                                    k_neighbour_counts)
+            with open(f'{data_dir}{k}_convolved_testing_features.pt', 'wb') as a:
+                pickle.dump(testing_features, a)
 
