@@ -5,18 +5,18 @@ from torch.nn.modules.module import Module
 
 
 class PreSelectionConvolution(Module):
-    def __init__(self, n_nodes, n_neighbours):
+    def __init__(self, n_nodes, n_neighbours, sum_dimension = 1):
         super(PreSelectionConvolution, self).__init__()
         self.n_nodes = n_nodes
         self.n_neighbours = n_neighbours
+        self.sum_dimension = sum_dimension
 
-        w = torch.zeros(n_nodes, n_neighbours) #plus one because first neighbour is self
+        w = torch.zeros(n_nodes, n_neighbours) 
         b = torch.zeros(n_nodes)
-        self.weight = torch.nn.Parameter(w)
-        self.bias = torch.nn.Parameter(b)
-
-        torch.nn.init.xavier_uniform_(self.weight)
-        torch.nn.init.normal_(self.bias)
+        torch.nn.init.xavier_uniform_(w)
+        torch.nn.init.normal_(b)
+        self.weight = torch.nn.Parameter(w.to_sparse())
+        self.bias = torch.nn.Parameter(b.to_sparse())
 
     def sparse_dense_mul(self, s, d):
         '''
@@ -28,13 +28,13 @@ class PreSelectionConvolution(Module):
         return torch.sparse.FloatTensor(i, v * dv, s.size())
 
     def forward(self, layer_input):
-        x = self.sparse_dense_mul(layer_input, self.weight)
-        x = torch.sparse.sum(x, 1) 
+        x = layer_input * self.weight
+        x = torch.sparse.sum(x, self.sum_dimension) 
         return self.bias + x 
 
     def __repr__(self):
         return self.__class__.__name__ + ' (' \
-               + str(self.n_nodes) + ','+ str(self.n_neighbours) + ' -> ' \
+               + str(self.n_nodes) + ',' + str(self.n_neighbours) + ' -> ' \
                + str(self.n_nodes) + ')'
 
 

@@ -3,11 +3,14 @@ import os
 import random
 import logging
 import numpy as np
+import pickle
 
 def load_training_data(data_dir, k = None, to_dense = True):
     if k is not None:
-        features = torch.load(os.path.join(data_dir, 
-                                        f'{k}_convolved_training_features.pt'))    
+        with open(
+            os.path.join(data_dir, f'{k}_convolved_training_features.pkl'), 
+                'rb') as a:
+            features = pickle.load(a)
     else:
         features = torch.load(os.path.join(data_dir, 'training_features.pt'))
         if to_dense:
@@ -17,8 +20,9 @@ def load_training_data(data_dir, k = None, to_dense = True):
 
 def load_testing_data(data_dir, k = None, to_dense = True):
     if k is not None:
-        features = torch.load(os.path.join(data_dir, 
-                                    f'{k}_convolved_testing_features.pt'))    
+        with open(os.path.join(data_dir, f'{k}_convolved_testing_features.pkl'),
+             'rb') as a:
+            features = pickle.load(a)
     else:
         features = torch.load(os.path.join(data_dir, 'testing_features.pt'))
         if to_dense:

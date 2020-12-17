@@ -132,9 +132,9 @@ class PreConvolutionNN(nn.Module):
 
     #adj included for consistency with training functions, simplifies training
     def forward(self, x, adj = None): 
-        x = F.leaky_relu(self.conv(x))
+        x = F.leaky_relu(self.conv(x)).unsqueeze(1)
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = self.linear1(x)[0]
+        out = self.linear1(x.transpose(0,1))[0][0]
         return out
 
 

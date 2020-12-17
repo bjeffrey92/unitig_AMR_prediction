@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-
 import argparse
+
 import time
 import logging
 import math
 import os
+from functools import lru_cache
 
 import torch
 import torch.nn as nn
@@ -14,7 +15,7 @@ from GNN_model.utils import load_training_data, load_testing_data, \
                             load_adjacency_matrix, accuracy,\
                             logcosh, write_epoch_results, DataGenerator, \
                             MetricAccumulator, add_global_node
-from GNN_model.models import GCNMaxPooling, GCNPerNode
+from GNN_model.models import GCNMaxPooling, GCNPerNode, PreConvolutionNN
 
 
 logging.basicConfig()
@@ -145,13 +146,11 @@ def test(data, model, adj, loss_function, accuracy):
 
     return loss, acc
 
-
+@lru_cache(maxsize = 1)
 def load_data(data_dir, k = None, 
             normed_adj_matrix = True, global_node = False):
     training_features, training_labels = load_training_data(data_dir, k = k)
     testing_features, testing_labels = load_testing_data(data_dir, k = k)
-    assert training_features.shape[1] == testing_features.shape[1], \
-        'Dimensions of training and testing data not equal'
     
     if k is not None:
         training_data = DataGenerator(training_features, training_labels, 
@@ -162,6 +161,8 @@ def load_data(data_dir, k = None,
                                     pre_convolved = True)
         return training_data, testing_data
     else:
+        assert training_features.shape[1] == testing_features.shape[1], \
+            'Dimensions of training and testing data not equal'
         training_data = DataGenerator(training_features, training_labels, 
                                     global_node = global_node)
         testing_data = DataGenerator(testing_features, testing_labels, 
@@ -221,6 +222,7 @@ def train_multiple():
         training_data, testing_data, adj = load_data(data_dir, 
                                                     global_node = True)
 
+        torch.manual_seed(0)
         model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50, 
                         n_hid_2 = 50, out_dim = 1, dropout = 0.3)
 
@@ -264,18 +266,27 @@ def main(args):
 
     Ab = 'log2_azm_mic'
     data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
+    k = 3
+
+    training_data, testing_data = load_data(data_dir, k = k)
+    adj = None #for consistency
+
+    n_neighbours = training_data.next_sample()[0].shape[1]
+    torch.manual_seed(0)
+    model = PreConvolutionNN(n_nodes = training_data.n_nodes, 
+                            n_neighbours = n_neighbours,
+                            out_dim = 1, dropout = 0.3) #add one to k as 1st neighbour is
 
     # training_data, testing_data, adj = load_data(data_dir)
-    training_data, testing_data = load_data(data_dir, k = 4)
+    # torch.manual_seed(0)
+    # model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50, 
+    #                     n_hid_2 = 50, out_dim = 1, dropout = 0.3)
 
-    model = GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = 50, 
-                        n_hid_2 = 50, out_dim = 1, dropout = 0.3)
-
-    optimizer = optim.Adam(model.parameters(), lr = 0.001, 
+    optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
                     weight_decay = 5e-4) #weight decay is l2 loss
     loss_function = nn.MSELoss()
 
-    summary_file = Ab + '_family_normalised_new_GNN.tsv'
+    summary_file = f'{Ab}_preconvolution_NN.tsv'
 
     #records training metrics and logs the gradient after each epoch
     training_metrics = MetricAccumulator() 
@@ -286,7 +297,7 @@ def main(args):
         
         model, epoch_results = train(training_data, model, 
                                     optimizer, adj, epoch, loss_function, 
-                                    accuracy, l1_alpha = 0.1, 
+                                    accuracy, l1_alpha = None, 
                                     testing_data = testing_data)
         
         training_metrics.add(epoch_results)
@@ -301,7 +312,7 @@ def main(args):
 
     logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
-    torch.save(model, Ab + '_family_normalised_fitted_GNN.pt')
+    torch.save(model, f'{Ab}_preconvolution_NN.pt')
 
 
 # if __name__ == '__main__':

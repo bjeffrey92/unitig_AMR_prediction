@@ -2,56 +2,34 @@ import time
 import pickle
 import hyperopt
 import os
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import logging
 import matplotlib.pyplot as plt
-from functools import lru_cache
 from GNN_model import train, utils, models
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
 
-@lru_cache(maxsize = 1)
-def load_data(data_dir, normed_adj_matrix = True, global_node = False):
-    adj = utils.load_adjacency_matrix(data_dir, normed_adj_matrix)
-    
-    #adds node which is connected to all others
-    #required for gcn without max pooling layers
-    if global_node:
-        adj = utils.add_global_node(adj)
-    
-    training_features, training_labels = utils.load_training_data(data_dir)
-    testing_features, testing_labels = utils.load_testing_data(data_dir)
-    assert training_features.shape[1] == testing_features.shape[1], \
-        'Dimensions of training and testing data not equal'
-    
-    training_data = utils.DataGenerator(training_features, training_labels, 
-                                global_node = global_node)
-    testing_data = utils.DataGenerator(testing_features, testing_labels, 
-                                global_node = global_node)
-
-    return training_data, testing_data, adj
-
-
 def train_evaluate(Ab, params):
 
     print(params) 
 
-    n_hid_1 = round(params['n_hid_1'])
-    n_hid_2 = round(params['n_hid_2'])
     dropout = params['dropout']
     l2_alpha = params['l2_alpha']
     lr = params['lr']
 
     data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
+    k = 4
 
-    training_data, testing_data, adj = load_data(data_dir)
+    training_data, testing_data = train.load_data(data_dir, k = k)
+    adj = None
 
-    model = models.GCNPerNode(n_feat = training_data.n_nodes, n_hid_1 = n_hid_1, 
-                        n_hid_2 = n_hid_2, n_hid_3 = 0, 
-                        out_dim = 1, dropout = dropout)
+    torch.manual_seed(0)
+    model = models.PreConvolutionNN(k = k + 1, n_nodes = training_data.n_nodes, 
+                            out_dim = 1, dropout = dropout) #add one to k as 1st neighbour is
 
     optimizer = optim.Adam(model.parameters(), lr = lr, 
                     weight_decay = l2_alpha) #weight decay is l2 loss
@@ -81,11 +59,9 @@ def optimise_hps(Ab):
     def objective(params, Ab = Ab):
         return train_evaluate(Ab, params)
 
-    space = {'n_hid_1': hyperopt.hp.uniform('n_hid_1', 10, 80),
-            'n_hid_2': hyperopt.hp.uniform('n_hid_2', 10, 80),
-            'dropout': hyperopt.hp.uniform('dropout', 0.2, 0.7),
+    space = {'dropout': hyperopt.hp.uniform('dropout', 0.2, 0.7),
             'l2_alpha': hyperopt.hp.uniform('l2_alpha', 1e-4, 1e-3),
-            'lr': hyperopt.hp.uniform('lr', 1e-5, 5e-3)
+            'lr': hyperopt.hp.uniform('lr', 1e-5, 5e-4)
             }
     
     trials = hyperopt.Trials()
@@ -118,13 +94,13 @@ def plot_chains(trials, fig_name):
     
 
 if __name__ == '__main__':
-    Ab = 'log2_cro_mic'
+    Ab = 'log2_azm_mic'
 
     start_time = time.time()
     trials = optimise_hps(Ab)
     logging.info(f'Optimisation loop complete, time take = {time.time() - start_time}')
 
-    with open(f'{Ab}_gnn_hp_optimisation_trials.pkl', 'wb') as a:
+    with open(f'{Ab}_preconvolution_trials.pkl', 'wb') as a:
         pickle.dump(trials, a)
 
-    plot_chains(trials, f'{Ab}_gnn_hp_optimisation_markov_chains.png')
+    plot_chains(trials, f'{Ab}_preconvolution_hp_optimisation_markov_chains.png')

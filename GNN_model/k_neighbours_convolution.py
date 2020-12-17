@@ -143,7 +143,8 @@ def feature_neighbourhoods(features, neighbourhoods_dict, k_neighbours,
                 N += len(ones)
                 d += 1
         indices = [indices_0[:N], indices_1[:N]]
-        return torch.sparse_coo_tensor(indices, np.ones(N), size = tensor_size)
+        return torch.sparse_coo_tensor(indices, np.ones(N, dtype = np.float32), 
+                                        size = tensor_size)
 
     sparse_feature_tensors = features_df.apply(get_sparse_neighbourhood_tensor, 
                                                 axis = 1)
@@ -153,7 +154,7 @@ def feature_neighbourhoods(features, neighbourhoods_dict, k_neighbours,
 
 if __name__ == '__main__':
     # Ab = sys.argv[1]
-    train_test = 1
+    train_test = 0
 
     Abs = ['log2_azm_mic',
         'log2_cip_mic',
@@ -186,3 +187,4 @@ if __name__ == '__main__':
             with open(f'{data_dir}{k}_convolved_testing_features.pt', 'wb') as a:
                 pickle.dump(testing_features, a)
 
+        print(Ab, '\tdone')
