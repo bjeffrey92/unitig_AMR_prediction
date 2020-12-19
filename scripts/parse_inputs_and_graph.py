@@ -289,6 +289,31 @@ def filter_unitigs(training_features, testing_features, adj):
     return adj_tensor, filtered_training_features, filtered_testing_features
 
 
+def get_distances(adj, n = 20):
+    '''
+    adj: sparse adjacency tensor
+    n: max number of steps between nodes to consider
+    '''
+    #construct networkx graph and use this to build distance matrix
+    G = nx.Graph()
+
+    #nodes first then edges
+    node_list = list(range(adj.shape[0]))
+    G.add_nodes_from(node_list)
+    adj = adj.coalesce()
+    indices = adj.indices().tolist()
+    edge_list = [(indices[0][i], indices[1][i]) for i in range(len(indices[0]))]
+    G.add_edges_from(edge_list)
+
+    #shorted distance between each pair of connected nodes
+    shortest_path_lengths = nx.all_pairs_shortest_path_length(G)
+
+    def _max_n_steps(distances, n):
+        return {k:v for k,v in distances.items() if v <= n}
+    #return as dictionary keeping only distance of max n steps
+    return {node:_max_n_steps(distances, n) for node, distances in shortest_path_lengths}
+
+
 def order_metadata(metadata, rtab_file):
     
     with open(rtab_file, 'r') as a:
