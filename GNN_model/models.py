@@ -16,7 +16,7 @@ class _connectionSubModel(nn.Module):
         self.lin = torch.nn.Linear(in_dim, out_dim) #encodes weights and bias
 
     def forward(self, layer_input):
-        output = F.relu(self.lin(layer_input)) #Y = WX^T + B
+        output = self.lin(layer_input) #Y = WX^T + B
         return output 
 
     def __repr__(self):
@@ -41,17 +41,19 @@ class GraphConnectionsNN(nn.Module):
     def _parse_inputs(self, model_input, i):
         return model_input[list(self.distances[i].keys())].squeeze(1)
 
-    def forward(self, model_input):
+    def forward(self, model_input, adj = None):
+        self.latest_input = model_input
         x = torch.cat(
             [self.layer_1[i](self._parse_inputs(model_input, i)) 
                 for i in self.distances.keys()],
             dim = 0)
+        x = F.leaky_relu(x)
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.relu(self.layer_2(x))
+        x = F.leaky_relu(self.layer_2(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.relu(self.layer_3(x))
+        x = F.leaky_relu(self.layer_3(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = F.relu(self.layer_4(x))
+        out = F.leaky_relu(self.layer_4(x))
         return out
 
 
