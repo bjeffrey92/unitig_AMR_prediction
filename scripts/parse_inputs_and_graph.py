@@ -8,6 +8,7 @@ import torch
 import os
 import numpy as np
 import networkx as nx
+import pickle
 from itertools import compress
 from torch_sparse import SparseTensor
 from scipy.sparse import identity, csr_matrix
@@ -357,7 +358,7 @@ def load_families(metadata, families):
 
 def save_data(out_dir, training_features, testing_features, 
                 training_labels, testing_labels, adjacency_matrix,
-                training_metadata, testing_metadata,
+                distances, training_metadata, testing_metadata,
                 training_countries = None, testing_countries = None):
     
     torch.save(training_features, os.path.join(out_dir, 'training_features.pt'))
@@ -366,6 +367,9 @@ def save_data(out_dir, training_features, testing_features,
     torch.save(testing_labels, os.path.join(out_dir, 'testing_labels.pt'))
     torch.save(adjacency_matrix, os.path.join(out_dir, 
                                             'unitig_adjacency_tensor.pt'))
+
+    with open(os.path.join(out_dir, 'distances_dict.pkl'), 'wb') as a:
+        pickle.dump(distances, a)
 
     training_metadata.to_csv(os.path.join(out_dir, 'training_metadata.csv'),
                             index = False)
@@ -451,6 +455,8 @@ if __name__ == '__main__':
             adj, training_features, testing_features = \
                  filter_unitigs(training_features, testing_features, adj_tensor)
 
+            distances = get_distances(adj)
+
             #ensure metadata is in same order as features for label extraction
             training_metadata = order_metadata(metadata, training_rtab_file)
             testing_metadata = order_metadata(metadata, testing_rtab_file)
@@ -469,5 +475,5 @@ if __name__ == '__main__':
 
         out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
         save_data(out_dir, training_features, testing_features, training_labels, 
-                    testing_labels, adj, training_metadata, testing_metadata,
+                    testing_labels, adj, distances, training_metadata, testing_metadata,
                     training_countries, testing_countries)
