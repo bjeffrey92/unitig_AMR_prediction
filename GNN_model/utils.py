@@ -38,6 +38,11 @@ def load_adjacency_matrix(data_dir, degree_normalised = True):
         adj = torch.load(os.path.join(data_dir, 'unitig_adjacency_tensor.pt'))
     return adj
 
+def load_distances(data_dir):
+    with open(os.path.join(data_dir, 'distances_dict.pkl'), 'rb') as a:
+        distances = pickle.load(a)
+    return distances
+
 def load_labels_2(data_dir, countries = True, families = False):
     
     if countries == families:

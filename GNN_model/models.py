@@ -1,59 +1,28 @@
-from functools import lru_cache
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from GNN_model.layers import GraphConvolution, GraphConvolutionPerNode, \
-                            PreSelectionConvolution
+                            PreSelectionConvolution, SparsePrePrunedLayer
 
-
-class _connectionSubModel(nn.Module):
-    def __init__(self, in_dim, out_dim = 1):
-        super(_connectionSubModel, self).__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-
-        self.lin = torch.nn.Linear(in_dim, out_dim) #encodes weights and bias
-
-    def forward(self, layer_input):
-        output = self.lin(layer_input) #Y = WX^T + B
-        return output 
-
-    def __repr__(self):
-        return self.__class__.__name__ + ' (' \
-               + str(self.in_dim) + ' -> ' \
-               + str(self.out_dim) + ')'        
 
 class GraphConnectionsNN(nn.Module):
     def __init__(self, distances, n_hid_1, n_hid_2, out_dim, dropout):
         super(GraphConnectionsNN, self).__init__()
 
-        self.distances = {str(k):v for k,v in distances.items()}
-        self.dropout = dropout
-
-        self.layer_1 = nn.ModuleDict({str(node):_connectionSubModel(len(path_lengths)) 
-                            for node, path_lengths in distances.items()})
+        self.layer_1 = SparsePrePrunedLayer(distances)
         self.layer_2 = nn.Linear(len(distances), n_hid_1)
         self.layer_3 = nn.Linear(n_hid_1, n_hid_2)
         self.layer_4 = nn.Linear(n_hid_2, out_dim)
-
-    @lru_cache(maxsize = None)
-    def _parse_inputs(self, model_input, i):
-        return model_input[list(self.distances[i].keys())].squeeze(1)
+        self.dropout = dropout
 
     def forward(self, model_input, adj = None):
-        self.latest_input = model_input
-        x = torch.cat(
-            [self.layer_1[i](self._parse_inputs(model_input, i)) 
-                for i in self.distances.keys()],
-            dim = 0)
-        x = F.leaky_relu(x)
+        x = F.leaky_relu(self.layer_1(model_input))
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.layer_2(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
         x = F.leaky_relu(self.layer_3(x))
         F.dropout(x, self.dropout, inplace = True, training = True)
-        out = F.leaky_relu(self.layer_4(x))
+        out = F.leaky_relu(self.layer_4(x))[0]
         return out
 
 

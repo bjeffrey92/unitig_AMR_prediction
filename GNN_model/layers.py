@@ -4,6 +4,36 @@ import numpy as np
 from torch.nn.modules.module import Module
 
 
+class SparsePrePrunedLayer(Module):
+    def __init__(self, distances):
+        super(SparsePrePrunedLayer, self).__init__()
+
+        self.distances = distances
+        self.weights = self._build_weights_matrix()
+        b = torch.zeros(len(distances))
+        torch.nn.init.normal_(b)
+        self.bias = b
+
+    def _build_weights_matrix(self):
+        total_values = sum([len(v) for v in self.distances.values()])
+        indices = [[None] * total_values] * 2
+
+        n = 0
+        for key, value in self.distances.items():
+            n_values = len(value)
+            indices[0][n:n + n_values] = [key] * n_values
+            indices[1][n:n + n_values] = list(value.keys())
+            n += n_values
+
+        values = torch.zeros(total_values)
+        torch.nn.init.normal_(values)
+        return torch.sparse_coo_tensor(indices, values)
+
+    def forward(self, layer_input):
+        x = torch.sparse.mm(self.weights, layer_input).squeeze(1)
+        return x + self.bias
+
+
 class PreSelectionConvolution(Module):
     def __init__(self, n_nodes, n_neighbours, sum_dimension = 1):
         super(PreSelectionConvolution, self).__init__()
