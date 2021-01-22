@@ -103,6 +103,42 @@ def parse_metadata(metadata_file, rtab_file, outcome_column):
     return df
 
 
+def get_unitigs_from_gwas(gwas_summary_file, graph_nodes_file, mapping_dict,
+                        adj_tensor, p_value_threshold = 0.1, neighbours = True):
+    '''
+    Gets unitigs below p value threshold from gwas and their n step neighbours
+    '''
+    df = pd.read_csv(gwas_summary_file, sep = '\t')
+    unitigs = df.loc[df['lrt-pvalue'] <= p_value_threshold]['variant'] #lrt-pvalue is population adjusted p value
+    
+    graph_nodes = pd.read_csv(graph_nodes_file, sep = '\t', header = None)
+    gwas_node_labels = graph_nodes.merge(unitigs, left_on = 1, 
+                                        right_on = 'variant')[0]
+
+    #get n step neighbours of each gwas node if not already included
+    if neighbours:
+        adj_tensor = adj_tensor.coalesce()
+        indices_df = pd.DataFrame({0: adj_tensor.indices()[0].tolist(),
+                                    1: adj_tensor.indices()[1].tolist()})
+
+        neighbouring_unitigs = indices_df.merge(gwas_node_labels, 
+                                                left_on = 0, 
+                                                right_on = 0)[1]
+        gwas_node_labels = pd.concat([gwas_node_labels, 
+                                    neighbouring_unitigs]).unique() #collect together and remove duplicates
+        gwas_node_labels = pd.Series(gwas_node_labels, name = 0)
+
+
+    #convert graph node labels to unitig labels so they can be selected from the rtab file
+    mapping_df = pd.DataFrame({'graph_nodes': list(mapping_dict.keys()),
+                                'unitig_label': list(mapping_dict.values())})
+    gwas_node_labels = gwas_node_labels.astype(str)
+    gwas_unitigs = mapping_df.merge(gwas_node_labels, left_on='graph_nodes', 
+                                   right_on = 0)['unitig_label'] 
+
+    return set(gwas_unitigs)
+
+
 def split_training_and_testing(rtab_file, 
                                 files_to_include,
                                 training_rtab_file,
@@ -110,7 +146,8 @@ def split_training_and_testing(rtab_file,
                                 metadata = None, 
                                 country_split = False,
                                 freq_filt = (0.05, 0.95),
-                                training_split = 0.7):
+                                training_split = 0.7,
+                                gwas_selections = []):
     '''
     create training and testing rtab files so features can be generated in most memory efficient way
     '''
@@ -162,8 +199,12 @@ def split_training_and_testing(rtab_file,
         for row in reader:
             sys.stdout.write(f'\rprocessing {j} of {num_unitigs} unitigs')
             sys.stdout.flush()
-            row = list(compress(row, filt))
             j += 1
+            
+            #skip if unitig not selected by gwas
+            if gwas_selections and row[0] not in gwas_selections: continue 
+            
+            row = list(compress(row, filt))
 
             frequency = sum([1 for i in row[1:] if i == '1'])/len(row[1:])
             if frequency < freq_filt[0] or frequency > freq_filt[1]: continue #only include intermediate frequency unitigs
@@ -290,7 +331,7 @@ def filter_unitigs(training_features, testing_features, adj):
     return adj_tensor, filtered_training_features, filtered_testing_features
 
 
-def get_distances(adj, n = 20):
+def get_distances(adj, n = 5):
     '''
     adj: sparse adjacency tensor
     n: max number of steps between nodes to consider
@@ -312,7 +353,8 @@ def get_distances(adj, n = 20):
     def _max_n_steps(distances, n):
         return {k:v for k,v in distances.items() if v <= n}
     #return as dictionary keeping only distance of max n steps
-    return {node:_max_n_steps(distances, n) for node, distances in shortest_path_lengths}
+    return {node:_max_n_steps(distances, n) 
+            for node, distances in shortest_path_lengths}
 
 
 def order_metadata(metadata, rtab_file):
@@ -359,8 +401,14 @@ def load_families(metadata, families):
 def save_data(out_dir, training_features, testing_features, 
                 training_labels, testing_labels, adjacency_matrix,
                 distances, training_metadata, testing_metadata,
-                training_countries = None, testing_countries = None):
+                training_countries = None, testing_countries = None,
+                gwas_selections = []):
     
+    if gwas_selections:
+        out_dir = os.path.join(out_dir, 'gwas_filtered')
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+
     torch.save(training_features, os.path.join(out_dir, 'training_features.pt'))
     torch.save(testing_features, os.path.join(out_dir, 'testing_features.pt'))
     torch.save(training_labels, os.path.join(out_dir, 'training_labels.pt'))
@@ -408,7 +456,7 @@ if __name__ == '__main__':
     logging.info('Constructing graph adjacency matrix')
     #component_nodes is set of all the nodes in the largest component
     adj_matrix = parse_graph_adj_matrix(edges_file, nodes_file, 
-                                        node_to_pattern_id, norm = True)  
+                                        node_to_pattern_id, norm = False)  
     
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
 
@@ -423,6 +471,14 @@ if __name__ == '__main__':
         #if don't wish to specify countries
         countries = []
 
+        # gwas_selections = []
+        gwas_summary_file = f'gwas/{outcome_column}_unitigs.txt'
+        gwas_selections = get_unitigs_from_gwas(gwas_summary_file, nodes_file,
+                                                node_to_pattern_id,
+                                                adj_tensor,
+                                                p_value_threshold = 0.1,
+                                                neighbours = True)
+
         with tempfile.NamedTemporaryFile() as a, \
                 tempfile.NamedTemporaryFile() as b:
             training_rtab_file = a.name
@@ -435,13 +491,15 @@ if __name__ == '__main__':
                                             testing_rtab_file,
                                             metadata, 
                                             country_split = True,
-                                            freq_filt = (0.05, 0.95))
+                                            freq_filt = (0.05, 0.95),
+                                            gwas_selections = gwas_selections)
             else:
                 split_training_and_testing(rtab_file, 
                                             metadata.index, 
                                             training_rtab_file, 
                                             testing_rtab_file,
-                                            freq_filt = (0.05, 0.95))
+                                            freq_filt = (0.05, 0.95),
+                                            gwas_selections = gwas_selections)
 
             #reads in rtab as sparse feature tensor
             training_features = load_features(training_rtab_file, 
@@ -475,5 +533,6 @@ if __name__ == '__main__':
 
         out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
         save_data(out_dir, training_features, testing_features, training_labels, 
-                    testing_labels, adj, distances, training_metadata, testing_metadata,
-                    training_countries, testing_countries)
+                    testing_labels, adj, distances, training_metadata,
+                    testing_metadata, training_countries, testing_countries,
+                    gwas_selections)
