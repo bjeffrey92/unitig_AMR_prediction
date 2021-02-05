@@ -77,28 +77,13 @@ def convert_to_tensor(matrix, torch_sparse_coo = True):
         return sparse_tensor
 
 
-def parse_metadata(metadata_file, rtab_file, outcome_column):
-    metadata_df = pd.read_csv(metadata_file)
+def parse_metadata(metadata_file, outcome_column):
+    df = pd.read_csv(metadata_file)
+    df = df.loc[df.id != 'WHO_F'] #remove reference genome
 
     #drop everything without measurement for outcome
-    metadata_df = metadata_df.loc[~metadata_df[outcome_column].isna()] 
-
-    with open(rtab_file, 'r') as a:
-        reader = csv.reader(a, delimiter = ' ')
-        input_files = next(reader)[1:]
-    
-    accessions = pd.DataFrame(input_files)
-    df = metadata_df.merge(accessions, 
-                        left_on = 'Sanger_lane', right_on = 0)
-    df = df.rename(columns = {0:'Filename'})
-
-    diff = len(accessions) - len(df)
-    if diff > 0:
-        logging.warning(f'{diff} entries in {rtab_file} could not be mapped to entries in {metadata_file}')
-        input_files = [i for i in input_files if i in df.Filename.values] #get all which are present
-
-    df.set_index('Filename', inplace = True)
-    df = df.loc[input_files] #order metadata by order that files are present in the rtab
+    df = df.loc[~df[outcome_column].isna()] 
+    df.set_index('id', inplace = True)
 
     return df
 
@@ -144,7 +129,6 @@ def split_training_and_testing(rtab_file,
                                 training_rtab_file,
                                 testing_rtab_file,
                                 metadata = None, 
-                                country_split = False,
                                 freq_filt = (0.05, 0.95),
                                 training_split = 0.7,
                                 gwas_selections = []):
@@ -163,29 +147,22 @@ def split_training_and_testing(rtab_file,
         header = list(compress(header, filt))
         total_samples = len(header) - 1
 
-        if country_split:
-            #get indices of samples in the rtab file header so that countries 
-            #are equally represented in the training and testing data
-            #train test split may not be exact
-            training_indices = []
-            testing_indices = []            
-            country_freq = metadata.Country.value_counts().to_dict()
-            for c in country_freq:
-                c_training_n = round(country_freq[c] * training_split)
-                c_samples = \
-                    metadata[metadata.Country == c].index.to_list()
-                training_indices += [header.index(i) \
-                                            for i in c_samples[:c_training_n]]
-                testing_indices += [header.index(i) \
-                                            for i in c_samples[c_training_n:]]
-                training_n = len(training_indices)
-                testing_n = len(testing_indices)
-        else:
-            #split randomly
-            training_n = round(total_samples * training_split)
-            testing_n = total_samples - training_n
-            training_indices = list(range(1, training_n + 1))
-            testing_indices = list(range(training_n + 1, len(header)))
+        #get indices of samples in the rtab file header so that clades 
+        #are equally represented in the training and testing data
+        #train test split may not be exact
+        training_indices = []
+        testing_indices = []            
+        clade_freq = metadata.Clade.value_counts().to_dict()
+        for c in clade_freq:
+            c_training_n = round(clade_freq[c] * training_split)
+            c_samples = \
+                metadata[metadata.Clade == c].index.to_list()
+            training_indices += [header.index(i) \
+                                        for i in c_samples[:c_training_n]]
+            testing_indices += [header.index(i) \
+                                        for i in c_samples[c_training_n:]]
+            training_n = len(training_indices)
+            testing_n = len(testing_indices)
 
         #memory allocation
         header_array = np.array(header)
@@ -372,65 +349,38 @@ def load_labels(metadata, label_column):
     return torch.FloatTensor(metadata[label_column].values)
 
 
-def load_countries(metadata, countries):
-    country_tensors = {}
-    for i in countries:
-        country_tensors[i] = \
-            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) \
-                                                    for x in countries])
-
-    def parse_country(country):
-        return country_tensors[country]
-
-    return torch.stack(metadata.Country.apply(parse_country).to_list())
-
-
-def load_families(metadata, families):
-    family_tensors = {}
-    for i in families:
-        family_tensors[i] = \
-            torch.FloatTensor([(lambda x: 1 if x == i else 0)(x) \
-                                                        for x in families])
-
-    def parse_family(family):
-        return family_tensors[family]
-
-    return torch.stack(metadata.Family.apply(parse_family).to_list())
-    
-
-def save_data(out_dir, training_features, testing_features, 
+def save_data(save_dir, training_features, testing_features, 
                 training_labels, testing_labels, adjacency_matrix,
                 distances, training_metadata, testing_metadata,
-                training_countries = None, testing_countries = None,
                 gwas_selections = []):
     
     if gwas_selections:
-        out_dir = os.path.join(out_dir, 'gwas_filtered')
-        if not os.path.isdir(out_dir):
-            os.makedirs(out_dir)
+        save_dir = os.path.join(save_dir, 'gwas_filtered')
 
-    torch.save(training_features, os.path.join(out_dir, 'training_features.pt'))
-    torch.save(testing_features, os.path.join(out_dir, 'testing_features.pt'))
-    torch.save(training_labels, os.path.join(out_dir, 'training_labels.pt'))
-    torch.save(testing_labels, os.path.join(out_dir, 'testing_labels.pt'))
-    torch.save(adjacency_matrix, os.path.join(out_dir, 
-                                            'unitig_adjacency_tensor.pt'))
+
+    if not os.path.isdir(out_dir):
+        os.makedirs(out_dir)
+
+    torch.save(training_features, 
+            os.path.join(out_dir, 'training_features.pt'))
+    torch.save(testing_features, 
+            os.path.join(out_dir, 'testing_features.pt'))
+    torch.save(training_labels, 
+            os.path.join(out_dir, 'training_labels.pt'))
+    torch.save(testing_labels, 
+            os.path.join(out_dir, 'testing_labels.pt'))
+    torch.save(adjacency_matrix, 
+            os.path.join(out_dir, 'unitig_adjacency_tensor.pt'))
 
     with open(os.path.join(out_dir, 'distances_dict.pkl'), 'wb') as a:
         pickle.dump(distances, a)
 
-    training_metadata.to_csv(os.path.join(out_dir, 'training_metadata.csv'),
+    training_metadata.to_csv(
+                            os.path.join(out_dir, 'training_metadata.csv'),
                             index = False)
-    testing_metadata.to_csv(os.path.join(out_dir, 'testing_metadata.csv'),
+    testing_metadata.to_csv(
+                            os.path.join(out_dir, 'testing_metadata.csv'),
                             index = False)
-
-    if training_countries is not None:
-        torch.save(training_countries, 
-                os.path.join(out_dir, 'training_countries.pt'))
-    if testing_countries is not None:
-        torch.save(testing_countries, 
-                os.path.join(out_dir, 'testing_countries.pt'))
-
 
 if __name__ == '__main__':
 
@@ -438,7 +388,7 @@ if __name__ == '__main__':
     nodes_file = 'data/gonno_unitigs/graph.nodes'
     unique_rows_file = 'data/gonno_unitigs/unitigs.unique_rows_to_all_rows.txt'
     rtab_file = 'data/gonno_unitigs/unitigs.unique_rows.Rtab' #to filter unitigs based on frequency
-    metadata_file = 'data/metadata.csv'
+    metadata_file = 'data/filtered_metadata.csv'
     outcome_columns = ['log2_azm_mic', 'log2_cfx_mic', 
                     'log2_cip_mic', 'log2_cro_mic']
 
@@ -461,45 +411,28 @@ if __name__ == '__main__':
     adj_tensor = convert_to_tensor(adj_matrix.tocoo())
 
     for outcome_column in outcome_columns:
-        metadata = parse_metadata(metadata_file, rtab_file, outcome_column) #to know which files to include
+        metadata = parse_metadata(metadata_file, outcome_column) #to know which files to include
 
-        #alphabetical list of countries
-        # countries = metadata.Country.unique()
-        # countries.sort()
-        # countries = countries.tolist()
-        
-        #if don't wish to specify countries
-        countries = []
-
-        # gwas_selections = []
-        gwas_summary_file = f'gwas/{outcome_column}_unitigs.txt'
-        gwas_selections = get_unitigs_from_gwas(gwas_summary_file, nodes_file,
-                                                node_to_pattern_id,
-                                                adj_tensor,
-                                                p_value_threshold = 0.1,
-                                                neighbours = True)
+        gwas_selections = []
+        # gwas_summary_file = f'gwas/{outcome_column}_unitigs.txt'
+        # gwas_selections = get_unitigs_from_gwas(gwas_summary_file, nodes_file,
+        #                                         node_to_pattern_id,
+        #                                         adj_tensor,
+        #                                         p_value_threshold = 0.1,
+        #                                         neighbours = True)
 
         with tempfile.NamedTemporaryFile() as a, \
                 tempfile.NamedTemporaryFile() as b:
             training_rtab_file = a.name
             testing_rtab_file = b.name
 
-            if countries:
-                split_training_and_testing(rtab_file, 
-                                            metadata.index, 
-                                            training_rtab_file, 
-                                            testing_rtab_file,
-                                            metadata, 
-                                            country_split = True,
-                                            freq_filt = (0.05, 0.95),
-                                            gwas_selections = gwas_selections)
-            else:
-                split_training_and_testing(rtab_file, 
-                                            metadata.index, 
-                                            training_rtab_file, 
-                                            testing_rtab_file,
-                                            freq_filt = (0.05, 0.95),
-                                            gwas_selections = gwas_selections)
+            split_training_and_testing(rtab_file, 
+                                    metadata.index, 
+                                    training_rtab_file, 
+                                    testing_rtab_file,
+                                    metadata, 
+                                    freq_filt = (0.05, 0.95),
+                                    gwas_selections = gwas_selections)
 
             #reads in rtab as sparse feature tensor
             training_features = load_features(training_rtab_file, 
@@ -511,7 +444,8 @@ if __name__ == '__main__':
 
             #removes all unitigs which were filtered out and reshapes adjacency tensor
             adj, training_features, testing_features = \
-                 filter_unitigs(training_features, testing_features, adj_tensor)
+                filter_unitigs(training_features, testing_features, 
+                            adj_tensor)
 
             distances = get_distances(adj)
 
@@ -519,20 +453,13 @@ if __name__ == '__main__':
             training_metadata = order_metadata(metadata, training_rtab_file)
             testing_metadata = order_metadata(metadata, testing_rtab_file)
 
-        #parse training and testing labels as tensors
-        training_labels = load_labels(training_metadata, outcome_column)
-        testing_labels = load_labels(testing_metadata, outcome_column)
-
-        #countries of training and testing data as tensor of 1 and 0
-        if countries:
-            training_countries = load_countries(training_metadata, countries)
-            testing_countries = load_countries(testing_metadata, countries)
-        else:
-            training_countries = None
-            testing_countries = None
+            training_labels = load_labels(training_metadata, outcome_column)
+            testing_labels = load_labels(testing_metadata, outcome_column)
 
         out_dir = os.path.join('data/model_inputs/freq_5_95', outcome_column)
-        save_data(out_dir, training_features, testing_features, training_labels, 
-                    testing_labels, adj, distances, training_metadata,
-                    testing_metadata, training_countries, testing_countries,
-                    gwas_selections)
+        save_data(out_dir, 
+                training_features, testing_features, 
+                training_labels, testing_labels, 
+                adj, distances, 
+                training_metadata, testing_metadata, 
+                gwas_selections)
