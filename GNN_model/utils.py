@@ -83,7 +83,7 @@ def load_labels_2(data_dir, countries = True, families = False):
 def write_epoch_results(epoch, epoch_results, summary_file):
     if not os.path.isfile(summary_file):
         with open(summary_file, 'w') as a:
-            a.write('epoch\ttraining_data_loss\ttraining_data_acc\ttesting_data_loss\ttesting_data_acc\n')
+            a.write('epoch\ttraining_data_loss\ttraining_data_acc\ttesting_data_loss\ttesting_data_acc\tvalidation_data_loss\tvalidation_data_acc\n')
 
     with open(summary_file, 'a') as a:
         line = str(epoch) + '\t' + '\t'.join([str(i) for i in epoch_results])
@@ -214,10 +214,14 @@ class MetricAccumulator():
         self.training_data_acc = []
         self.testing_data_loss = []
         self.testing_data_acc = []
+        self.validation_data_loss = []
+        self.validation_data_acc = []
         self.training_data_loss_grads = []
         self.training_data_acc_grads = []
         self.testing_data_loss_grads = []
         self.testing_data_acc_grads = []
+        self.validation_data_loss_grads = []
+        self.validation_data_acc_grads = []
         self.gradient_batch = gradient_batch
 
     def add(self, epoch_results):
@@ -225,6 +229,8 @@ class MetricAccumulator():
         self.training_data_acc.append(epoch_results[1])
         self.testing_data_loss.append(epoch_results[2])
         self.testing_data_acc.append(epoch_results[3])
+        self.validation_data_loss.append(epoch_results[4])
+        self.validation_data_acc.append(epoch_results[5])
         self._all_grads()
 
     def _all_grads(self):
@@ -236,6 +242,10 @@ class MetricAccumulator():
             self.metric_gradient(self.testing_data_loss))
         self.testing_data_acc_grads.append(
             self.metric_gradient(self.testing_data_acc))
+        self.validation_data_loss_grads.append(
+            self.metric_gradient(self.validation_data_loss))
+        self.validation_data_acc_grads.append(
+            self.metric_gradient(self.validation_data_acc))
 
     def metric_gradient(self, x: list):
         batch = self.gradient_batch
@@ -251,14 +261,18 @@ class MetricAccumulator():
         avg_grads = [self.avg_gradient(self.training_data_loss_grads),
                     self.avg_gradient(self.training_data_acc_grads),
                     self.avg_gradient(self.testing_data_loss_grads),
-                    self.avg_gradient(self.testing_data_acc_grads)]
+                    self.avg_gradient(self.testing_data_acc_grads),
+                    self.avg_gradient(self.validation_data_loss_grads),
+                    self.avg_gradient(self.validation_data_acc_grads)]
         last_epoch = max(0, epoch - self.gradient_batch)
         logging.info(
             f'Average Gradient Between Epoch {epoch} and {last_epoch}:\n \
             Training Data Loss Gradient = {avg_grads[0]}\n \
             Training Data Accuracy Gradient = {avg_grads[1]}\n \
             Testing Data Loss Gradient = {avg_grads[2]}\n \
-            Testing Data Accuracy Gradient = {avg_grads[3]}\n')
+            Testing Data Accuracy Gradient = {avg_grads[3]}\n \
+            Validation Data Loss Gradient = {avg_grads[4]}\n \
+            Validation Data Accuracy Gradient = {avg_grads[5]}\n')
 
 #eucast resistance breakpoints for gonno
 breakpoints = {

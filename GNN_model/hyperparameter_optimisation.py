@@ -47,25 +47,6 @@ def train_evaluate(dropout, l2_alpha, lr, n_hid_1, n_hid_2):
     return sum(training_metrics.testing_data_loss[-5:])/5
 
 
-def plot_chains(trials, fig_name):
-    '''
-    Plots markov chain of each hyperparam and the loss
-    '''
-    x = list(range(len(trials.losses()))) #indices
-
-    #plots for the number of parameters plus the loss
-    fig, axs = plt.subplots(len(trials.vals) + 1, sharex = True) 
-
-    axs[0].plot(x, trials.losses())
-    axs[0].set_ylabel('loss')
-    for i, key in enumerate(trials.vals):
-        y = trials.vals[key]
-        axs[i + 1].plot(x, y)
-        axs[i + 1].set_ylabel(key)
-
-    fig.savefig(fig_name)
-    
-
 if __name__ == '__main__':
 
     pbounds = {
@@ -83,5 +64,3 @@ if __name__ == '__main__':
     )
 
     optimizer.maximize(n_iter = 2)
-
-    # plot_chains(trials, f'{Ab}_preconvolution_hp_optimisation_markov_chains.png')

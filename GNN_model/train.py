@@ -5,17 +5,13 @@ import time
 import logging
 import math
 import os
-from functools import lru_cache
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from GNN_model.utils import load_training_data, load_testing_data, \
-                            load_adjacency_matrix, load_distances, \
-                            accuracy, logcosh, write_epoch_results, \
-                            DataGenerator, MetricAccumulator
-from GNN_model.models import GraphConnectionsNN
+from GNN_model import utils
+from GNN_model.models import GraphConnectionsNN, GCNPerNode
 
 
 logging.basicConfig()
@@ -95,7 +91,8 @@ def batch_train(data, model, optimizer, epoch, loss_function, accuracy,
 
 
 def train(data, model, optimizer, epoch, loss_function, accuracy,
-         adj = None, l1_alpha = None, testing_data = None):
+        adj = None, l1_alpha = None, testing_data = None, 
+        validation_data = None):
     t = time.time()
     model.train()
     optimizer.zero_grad()
@@ -119,6 +116,12 @@ def train(data, model, optimizer, epoch, loss_function, accuracy,
     else:
         loss_test = 'N/A'
         acc_test = 'N/A'
+    if validation_data:
+        loss_val, acc_val = test(validation_data, model, 
+                                    loss_function, accuracy, adj)
+    else:
+        loss_val = 'N/A'
+        acc_val = 'N/A'
     
     regularised_loss_train.backward()
     optimizer.step()
@@ -130,9 +133,11 @@ def train(data, model, optimizer, epoch, loss_function, accuracy,
                 f'\tTraining Data Accuracy = {acc_train}\n'
                 f'\tTesting Data Loss = {loss_test}\n' + \
                 f'\tTesting Data Accuracy = {acc_test}\n'
+                f'\tValidation Data Loss = {loss_val}\n' + \
+                f'\tValidation Data Accuracy = {acc_val}\n'
                 )
 
-    return model, (loss_train, acc_train, loss_test, acc_test)
+    return model, (loss_train, acc_train, loss_test, acc_test, loss_val, acc_val)
 
 
 def test(data, model, loss_function, accuracy, adj = None):
@@ -147,68 +152,108 @@ def test(data, model, loss_function, accuracy, adj = None):
     return loss, acc
 
 
-def load_data(data_dir: str, distances: bool, adj: bool):
+def load_data(data_dir: str, distances: bool, adj: bool, left_out_clade: int):
     if distances == adj:
         raise ValueError('One of distances or adj must equal True')
 
-    training_features, training_labels = load_training_data(data_dir)
-    testing_features, testing_labels = load_testing_data(data_dir)
-    assert training_features.shape[1] == testing_features.shape[1], \
-        'Dimensions of training and testing data are not equal'
-    
-    training_data = DataGenerator(training_features, training_labels,
+    training_data = utils.load_training_data(data_dir)
+    testing_data = utils.load_testing_data(data_dir)
+    training_metadata, testing_metadata = utils.load_metadata(data_dir) #for CV split
+
+    logging.info(
+        f'Formatting data for model with clade {left_out_clade} left out')
+    training_indices = training_metadata.loc[
+                        training_metadata.Clade != left_out_clade].index
+    testing_indices = testing_metadata.loc[
+                        testing_metadata.Clade != left_out_clade].index
+    validation_indices_1 = training_metadata.loc[
+                        training_metadata.Clade == left_out_clade].index #extract data from training set
+    validation_indices_2 = testing_metadata.loc[
+                        testing_metadata.Clade == left_out_clade].index #extract data from testing set
+
+    training_features = torch.index_select(training_data[0], 0, 
+                                        torch.tensor(training_indices))
+    training_labels = torch.index_select(training_data[1], 0, 
+                                        torch.tensor(training_indices))
+    testing_features = torch.index_select(testing_data[0], 0,
+                                        torch.tensor(testing_indices))
+    testing_labels = torch.index_select(testing_data[1], 0, 
+                                        torch.tensor(testing_indices))
+    validation_features = torch.cat([
+                            torch.index_select(training_data[0], 0, 
+                                        torch.tensor(validation_indices_1)),
+                            torch.index_select(testing_data[0], 0, 
+                                        torch.tensor(validation_indices_2))
+                            ])
+    validation_labels = torch.cat([
+                            torch.index_select(training_data[1], 0, 
+                                        torch.tensor(validation_indices_1)),
+                            torch.index_select(testing_data[1], 0,
+                                        torch.tensor(validation_indices_2))
+                            ])
+
+    assert all([training_features.shape[1] == testing_features.shape[1],
+                validation_features.shape[1] == testing_features.shape[1]]), \
+        'Dimensions of training, testing and validation data are not equal'
+
+    training_data = utils.DataGenerator(training_features, training_labels,
                                 global_node = False)
-    testing_data = DataGenerator(testing_features, testing_labels, 
+    testing_data = utils.DataGenerator(testing_features, testing_labels, 
+                                global_node = False)
+    validation_data = utils.DataGenerator(validation_features, validation_labels, 
                                 global_node = False)
 
     if distances:
-        distances = load_distances(data_dir)
-        return training_data, testing_data, distances
+        distances = utils.load_distances(data_dir)
+        return training_data, testing_data, validation_data, distances
     elif adj:
-        adj = load_adjacency_matrix(data_dir)
-        return training_data, testing_data, adj
+        adj = utils.load_adjacency_matrix(data_dir, False)
+        return training_data, testing_data, validation_data, adj
 
 
 def main(args):    
 
-    Ab = 'log2_azm_mic'
-    data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
+    Ab = 'log2_cro_mic'
+    for left_out_clade in [1,2,3]:
+        data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
 
-    training_data, testing_data, distances = load_data(data_dir, 
-                                                distances = True, adj = False)
+        all_data = load_data(data_dir, distances = False, adj = True, 
+                        left_out_clade = left_out_clade)
+        training_data, testing_data, validation_data, adj = all_data
+        # adj = None
 
-    torch.manual_seed(0)
-    model = GraphConnectionsNN(distances, 100, 50, 1, 0.3) 
+        torch.manual_seed(0)
+        model = GCNPerNode(adj.shape[0], 50, 50, 1, 0.3) 
 
-    optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
-                    weight_decay = 5e-4) #weight decay is l2 loss
-    loss_function = nn.MSELoss()
+        optimizer = optim.Adam(model.parameters(), lr = 0.0001, 
+                        weight_decay = 5e-4) #weight decay is l2 loss
+        loss_function = nn.MSELoss()
 
-    summary_file = f'{Ab}_GraphConnectionsNN.tsv'
+        summary_file = f'{Ab}_clade_{left_out_clade}_left_out_GCNPerNode.tsv'
 
-    #records training metrics and logs the gradient after each epoch
-    training_metrics = MetricAccumulator() 
+        #records training metrics and logs the gradient after each epoch
+        training_metrics = utils.MetricAccumulator() 
 
-    start_time = time.time()
-    for epoch in range(300):
-        epoch += 1
+        start_time = time.time()
+        for epoch in range(300):
+            epoch += 1
+            
+            model, epoch_results = train(training_data, model, 
+                                        optimizer, epoch, loss_function, 
+                                        utils.accuracy, adj = adj, l1_alpha = None, 
+                                        testing_data = testing_data,
+                                        validation_data = validation_data)
+            
+            training_metrics.add(epoch_results)
+            if epoch >= 20:
+                training_metrics.log_gradients(epoch)
+            utils.write_epoch_results(epoch, epoch_results, summary_file)
         
-        model, epoch_results = train(training_data, model, 
-                                    optimizer, epoch, loss_function, 
-                                    accuracy, adj = None, l1_alpha = None, 
-                                    testing_data = testing_data)
-        
-        training_metrics.add(epoch_results)
-        if epoch >= 20:
-            training_metrics.log_gradients(epoch)
-        write_epoch_results(epoch, epoch_results, summary_file)
-    
-        if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
-                if i < 0.1]) >= 10 and epoch > 50:
-            logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
-            break
+            if len([i for i in training_metrics.testing_data_acc_grads[-10:] \
+                    if i < 0.1]) >= 10 and epoch > 50:
+                logging.info('Gradient of testing data accuracy appears to have plateaued, terminating early')
+                break
 
-    logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
+        logging.info(f'Model Fitting Complete. Time elapsed {time.time() - start_time}')
 
-    torch.save(model, f'{Ab}_GraphConnectionsNN.pt')
-
+        torch.save(model, f'{Ab}_clade_{left_out_clade}_left_out_GCNPerNode.pt')
