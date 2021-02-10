@@ -1,57 +1,73 @@
+import sys
 import os 
 import pickle 
 import numpy as np
 import itertools
-import hyperopt
 import matplotlib.pyplot as plt
+from torch import tensor
+from pandas import Series
+from bayes_opt import BayesianOptimization
 from functools import lru_cache
 from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error
-from torch import tensor
 
 from lasso_model.utils import load_training_data, load_testing_data
-from GNN_model.utils import R_or_S, accuracy
+from GNN_model.utils import accuracy, load_metadata
 
+# Ab = sys.argv[1]
+Ab = 'log2_azm_mic'
+left_out_clade = 1
 
-@lru_cache(maxsize = None)
-def load_data(Ab, iterations = 5):
+@lru_cache(maxsize = 1)
+def load_data(Ab: str, left_out_clade: int)-> tuple: 
     root_dir = 'data/model_inputs/freq_5_95/'
-    data_dir = os.path.join(root_dir, Ab, 'gwas_filtered')
+    data_dir = os.path.join(root_dir, Ab)
 
-    training_labels = load_training_data(data_dir)[1].tolist()
-    testing_labels = load_testing_data(data_dir)[1].tolist()
+    left_out_clade = int(left_out_clade)
 
-    with open(f'kernel_learning/{Ab}/{iterations}_iter_k_train.pkl', 'rb') as a:
-        k_train = pickle.load(a)
-    with open(f'kernel_learning/{Ab}/{iterations}_iter_k_test.pkl', 'rb') as a:
-        k_test = pickle.load(a)
+    train_labels = load_training_data(data_dir)[1].tolist()
+    test_labels = load_testing_data(data_dir)[1].tolist()
+    training_metadata, testing_metadata = load_metadata(data_dir)
 
-    return k_train, training_labels, k_test, testing_labels
-
-
-# def fit_and_evaluate(C, epsilon, 
-#                     k_train = k_train, k_test = k_test,
-#                     training_labels = training_labels, 
-#                     testing_labels = testing_labels):
+    training_indices = training_metadata.loc[
+                        training_metadata.Clade != left_out_clade].index
+    testing_indices = testing_metadata.loc[
+                        testing_metadata.Clade != left_out_clade].index
+    validation_indices_1 = training_metadata.loc[
+                        training_metadata.Clade == left_out_clade].index #extract data from training set
+    validation_indices_2 = testing_metadata.loc[
+                        testing_metadata.Clade == left_out_clade].index #extract data from testing set
     
-#     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
-#     model.fit(k_train, training_labels)
+    training_labels = Series(train_labels)[training_indices].tolist()
+    testing_labels = Series(test_labels)[testing_indices].tolist()
+    validation_labels = Series(train_labels)[validation_indices_1].tolist() + \
+                    Series(test_labels)[validation_indices_2].tolist() 
 
-#     train_acc = accuracy(tensor(model.predict(k_train)), 
-#                         tensor(training_labels))
-#     test_acc = accuracy(tensor(model.predict(k_test)), 
-#                         tensor(testing_labels))
+    kernel_dir = f'kernel_learning/{Ab}/cross_validation_results/fitted_kernels/'
+    k_train_file = os.path.join(kernel_dir, 
+                        f'clade_{left_out_clade}_left_out_k_train.pkl')
+    k_test_file = os.path.join(kernel_dir, 
+                        f'clade_{left_out_clade}_left_out_k_test.pkl')
+    k_validate_file = os.path.join(kernel_dir, 
+                        f'clade_{left_out_clade}_left_out_k_validate.pkl')
+    with open(k_train_file, 'rb') as a:
+        k_train = pickle.load(a)
+    with open(k_test_file, 'rb') as a:
+        k_test = pickle.load(a)
+    with open(k_validate_file, 'rb') as a:
+        k_validate = pickle.load(a)
 
-#     return train_acc, test_acc
+    return (k_train, training_labels), \
+            (k_test, testing_labels), \
+            (k_validate, validation_labels)
 
 
-def train_evaluate(params, Ab):
+def train_evaluate(C, epsilon):
 
-    print(params)
-    C = params['C']
-    epsilon = params['epsilon']
-
-    k_train, training_labels, k_test, testing_labels = load_data(Ab)
+    train_data, test_data, validation_data = load_data(Ab, left_out_clade)
+    k_train, training_labels = train_data
+    k_test, testing_labels = test_data
+    k_validate, validation_labels = validation_data
 
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
@@ -60,51 +76,29 @@ def train_evaluate(params, Ab):
                         tensor(training_labels))
     test_acc = accuracy(tensor(model.predict(k_test)), 
                         tensor(testing_labels))
+    validation_acc = accuracy(tensor(model.predict(k_validate)), 
+                            tensor(validation_labels))
     print(f'{C, epsilon}\n', 
         f'Training Data Accuracy = {train_acc}\n',
-        f'Testing Data Accuracy = {test_acc}\n')
+        f'Testing Data Accuracy = {test_acc}\n',
+        f'Validation Data Accuracy = {validation_acc}\n')
 
     return mean_squared_error(testing_labels, model.predict(k_test))
 
 
-def optimise_hps(Ab):
-
-    def objective(params, Ab = Ab):
-        return train_evaluate(params, Ab)
-
-    space = {'C': hyperopt.hp.uniform('C', 1e-08, 1e-05),
-            'epsilon': hyperopt.hp.uniform('epsilon', 1e-10, 1e-3)
-            }
-    
-    trials = hyperopt.Trials()
-    _ = hyperopt.fmin(objective, 
-                    space, 
-                    trials = trials, 
-                    algo = hyperopt.tpe.suggest,
-                    max_evals = 1000)
-
-    return trials
-
-
-def plot_chains(trials, fig_name):
-    '''
-    Plots markov chain of each hyperparam and the loss
-    '''
-    x = list(range(len(trials.losses()))) #indices
-
-    #plots for the number of parameters plus the loss
-    fig, axs = plt.subplots(len(trials.vals) + 1, sharex = True) 
-
-    axs[0].plot(x, trials.losses())
-    axs[0].set_ylabel('loss')
-    for i, key in enumerate(trials.vals):
-        y = trials.vals[key]
-        axs[i + 1].plot(x, y)
-        axs[i + 1].set_ylabel(key)
-
-    fig.savefig(fig_name)
-
-
 if __name__ == '__main__':
-    Ab = 'log2_azm_mic' 
-    trials = optimise_hps(Ab)
+    pbounds = {
+            'dropout': (0.2, 0.7),
+            'l2_alpha': (1e-4, 1e-3),
+            'lr': (1e-5, 5e-4),
+            'n_hid_1': (25, 100),
+            'n_hid_2': (10, 50)
+    }
+
+    optimizer = BayesianOptimization(
+        f = train_evaluate,
+        pbounds = pbounds,
+        random_state = 1,
+    )
+
+    optimizer.maximize(n_iter = 2)

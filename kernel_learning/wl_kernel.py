@@ -59,23 +59,15 @@ def format_data(data_dir, out_dir, left_out_clade):
     def parse_features(f):
         return {i:f[i] for i in range(len(f))}
 
-    data_by_left_out_clade = {}
-    for left_out_clade in training_metadata.Clade.unique():
-        features = train_test_validation_split(left_out_clade, training_features, 
-                                    testing_features, training_metadata, 
-                                    testing_metadata)
-        
-        G_train = [[edges, parse_features(i.tolist())] for i in features[0]]
-        G_test = [[edges, parse_features(i.tolist())] for i in features[1]]
-        G_validate = [[edges, parse_features(i.tolist())] for i in features[2]]
+    features = train_test_validation_split(left_out_clade, training_features, 
+                                testing_features, training_metadata, 
+                                testing_metadata)
+    
+    G_train = [[edges, parse_features(i.tolist())] for i in features[0]]
+    G_test = [[edges, parse_features(i.tolist())] for i in features[1]]
+    G_validate = [[edges, parse_features(i.tolist())] for i in features[2]]
 
-        data_by_left_out_clade[left_out_clade] = {
-            'G_train': G_train,
-            'G_test': G_test,
-            'G_validate': G_validate
-        }
-
-    return data_by_left_out_clade
+    return {'G_train': G_train, 'G_test': G_test, 'G_validate': G_validate}
 
 def fit_wl_kernel(G_train):
     wl_kernel = grakel.kernels.weisfeiler_lehman.WeisfeilerLehman(
@@ -92,11 +84,20 @@ def transform_testing_data(wl_kernel, G_test):
 
     return k_test 
 
+def save(out_dir, left_out_clade, G_train, G_test, G_validate):
+    with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_training_data_grakel_representation.pkl'), 'wb') as a:
+        pickle.dump(G_train, a)
+    with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_testing_data_grakel_representation.pkl'), 'wb') as a:
+        pickle.dump(G_test, a)
+    with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_validation_data_grakel_representation.pkl'), 'wb') as a:
+        pickle.dump(G_validate, a)
+
+
 if __name__ == '__main__':
     root_dir = 'data/model_inputs/freq_5_95/'
     
     Ab = sys.argv[1]
-    left_out_clade = sys.argv[2]
+    left_out_clade = int(sys.argv[2])
     data_dir = os.path.join(root_dir, Ab)
     out_dir = f'kernel_learning/{Ab}/cross_validation_results'
     if not os.path.isdir(out_dir):
@@ -104,25 +105,26 @@ if __name__ == '__main__':
 
     data_by_left_out_clade = format_data(data_dir, out_dir, left_out_clade)
 
-    for left_out_clade in data_by_left_out_clade:
-        G_train = data_by_left_out_clade[left_out_clade]['G_train']
-        G_test = data_by_left_out_clade[left_out_clade]['G_test']
-        G_validate = data_by_left_out_clade[left_out_clade]['G_validate']
+    G_train = data_by_left_out_clade['G_train']
+    G_test = data_by_left_out_clade['G_test']
+    G_validate = data_by_left_out_clade['G_validate']
 
-        wl_kernel, k_train = fit_wl_kernel(G_train)
-        with open(os.path.join(out_dir, 
-            f'clade_{left_out_clade}_left_out_k_train.pkl', 'wb')) as a:
-            pickle.dump(k_train, a)
-        with open(os.path.join(
-            f'clade_{left_out_clade}_left_out_wl_kernel.pkl', 'wb')) as a:
-            pickle.dump(wl_kernel, a)
+    save(out_dir, left_out_clade, G_train, G_test, G_validate)
 
-        k_test = transform_testing_data(wl_kernel, G_test)
-        with open(os.path.join(
-            f'clade_{left_out_clade}_left_out_k_test.pkl', 'wb')) as a:
-            pickle.dump(k_test, a)
+    wl_kernel, k_train = fit_wl_kernel(G_train)
+    with open(os.path.join(out_dir, 
+        f'clade_{left_out_clade}_left_out_k_train.pkl', 'wb')) as a:
+        pickle.dump(k_train, a)
+    with open(os.path.join(
+        f'clade_{left_out_clade}_left_out_wl_kernel.pkl', 'wb')) as a:
+        pickle.dump(wl_kernel, a)
 
-        k_validate = transform_testing_data(wl_kernel, G_validate)
-        with open(os.path.join(
-            f'clade_{left_out_clade}_left_out_k_validate.pkl', 'wb')) as a:
-            pickle.dump(k_validate, a)
+    k_test = transform_testing_data(wl_kernel, G_test)
+    with open(os.path.join(
+        f'clade_{left_out_clade}_left_out_k_test.pkl', 'wb')) as a:
+        pickle.dump(k_test, a)
+
+    k_validate = transform_testing_data(wl_kernel, G_validate)
+    with open(os.path.join(
+        f'clade_{left_out_clade}_left_out_k_validate.pkl', 'wb')) as a:
+        pickle.dump(k_validate, a)
