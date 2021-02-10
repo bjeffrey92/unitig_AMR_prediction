@@ -1,35 +1,28 @@
-import time
+import sys
 import pickle
-import hyperopt
 import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import logging
 import matplotlib.pyplot as plt
+from bayes_opt import BayesianOptimization
 from GNN_model import train, utils, models
 
-logging.basicConfig()
-logging.root.setLevel(logging.INFO)
+# Ab = sys.argv[1]
+Ab = 'log2_azm_mic'
 
-
-def train_evaluate(Ab, params):
-
-    print(params) 
-
-    dropout = params['dropout']
-    l2_alpha = params['l2_alpha']
-    lr = params['lr']
+def train_evaluate(dropout, l2_alpha, lr, n_hid_1, n_hid_2):
 
     data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
-    k = 4
 
-    training_data, testing_data = train.load_data(data_dir, k = k)
-    adj = None
+    training_data, testing_data, distances = train.load_data(data_dir, 
+                                                            distances = True,
+                                                            adj = False)
 
     torch.manual_seed(0)
-    model = models.PreConvolutionNN(k = k + 1, n_nodes = training_data.n_nodes, 
-                            out_dim = 1, dropout = dropout) #add one to k as 1st neighbour is
+    model = models.GraphConnectionsNN(distances = distances, 
+                            n_hid_1 = int(n_hid_1), n_hid_2 = int(n_hid_2),  
+                            out_dim = 1, dropout = dropout) 
 
     optimizer = optim.Adam(model.parameters(), lr = lr, 
                     weight_decay = l2_alpha) #weight decay is l2 loss
@@ -40,8 +33,8 @@ def train_evaluate(Ab, params):
         epoch += 1
         
         model, epoch_results = train.train(training_data, model, 
-                                    optimizer, adj, epoch, loss_function, 
-                                    utils.accuracy, l1_alpha = None, 
+                                    optimizer, epoch, loss_function, 
+                                    utils.accuracy, 
                                     testing_data = testing_data)
         training_metrics.add(epoch_results)
 
@@ -52,26 +45,6 @@ def train_evaluate(Ab, params):
 
     #returns average testing data loss in the last five epochs
     return sum(training_metrics.testing_data_loss[-5:])/5
-
-
-def optimise_hps(Ab):
-
-    def objective(params, Ab = Ab):
-        return train_evaluate(Ab, params)
-
-    space = {'dropout': hyperopt.hp.uniform('dropout', 0.2, 0.7),
-            'l2_alpha': hyperopt.hp.uniform('l2_alpha', 1e-4, 1e-3),
-            'lr': hyperopt.hp.uniform('lr', 1e-5, 5e-4)
-            }
-    
-    trials = hyperopt.Trials()
-    _ = hyperopt.fmin(objective, 
-                    space, 
-                    trials = trials, 
-                    algo = hyperopt.tpe.suggest,
-                    max_evals = 100)
-
-    return trials
 
 
 def plot_chains(trials, fig_name):
@@ -94,13 +67,21 @@ def plot_chains(trials, fig_name):
     
 
 if __name__ == '__main__':
-    Ab = 'log2_azm_mic'
 
-    start_time = time.time()
-    trials = optimise_hps(Ab)
-    logging.info(f'Optimisation loop complete, time take = {time.time() - start_time}')
+    pbounds = {
+            'dropout': (0.2, 0.7),
+            'l2_alpha': (1e-4, 1e-3),
+            'lr': (1e-5, 5e-4),
+            'n_hid_1': (25, 100),
+            'n_hid_2': (10, 50)
+    }
 
-    with open(f'{Ab}_preconvolution_trials.pkl', 'wb') as a:
-        pickle.dump(trials, a)
+    optimizer = BayesianOptimization(
+        f = train_evaluate,
+        pbounds = pbounds,
+        random_state = 1,
+    )
 
-    plot_chains(trials, f'{Ab}_preconvolution_hp_optimisation_markov_chains.png')
+    optimizer.maximize(n_iter = 2)
+
+    # plot_chains(trials, f'{Ab}_preconvolution_hp_optimisation_markov_chains.png')
