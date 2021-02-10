@@ -77,6 +77,8 @@ if __name__ == '__main__':
 
     laplacian = adj - deg
 
+    laplacian = laplacian.asfptype() #change to floating point
+
     #returns as complex number
     vals, vecs = scipy.sparse.linalg.eigs(laplacian, 6, sigma = 0)
 
