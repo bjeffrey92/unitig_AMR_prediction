@@ -64,17 +64,21 @@ def CV(training_features, training_labels,
 
 if __name__ == '__main__':
     root_dir = 'data/model_inputs/freq_5_95/'
-    Ab = 'log2_azm_mic'
-    data_dir = os.path.join(root_dir, Ab)
+    Abs = os.listdir(root_dir)
+    for Ab in Abs:
+        data_dir = os.path.join(root_dir, Ab)
 
-    training_features, training_labels = load_training_data(data_dir)
-    testing_features, testing_labels = load_testing_data(data_dir)
+        training_features, training_labels = load_training_data(data_dir)
+        testing_features, testing_labels = load_testing_data(data_dir)
 
-    training_labels = R_or_S(training_labels.tolist(), 
-                            breakpoints[Ab.split('_')[1]])
-    testing_labels = R_or_S(testing_labels.tolist(), 
-                            breakpoints[Ab.split('_')[1]])
+        training_labels = R_or_S(training_labels.tolist(), 
+                                breakpoints[Ab.split('_')[1]])
+        testing_labels = R_or_S(testing_labels.tolist(), 
+                                breakpoints[Ab.split('_')[1]])
 
-    cs = np.linspace(1, 20, 5)
-    accuracy_dict = CV(training_features, training_labels, 
-                    testing_features, testing_labels, cs)
+        cs = np.linspace(1e-7, 1e-4, 20)
+        accuracy_dict = CV(training_features, training_labels, 
+                        testing_features, testing_labels, cs)
+        with open(f'{Ab}_logistic_model_prediction_accuracies.pkl', 'wb') as a:
+            pickle.dump(accuracy_dict, a)
+        print(Ab)
