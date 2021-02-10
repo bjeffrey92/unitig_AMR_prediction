@@ -156,8 +156,10 @@ def load_data(data_dir: str, distances: bool, adj: bool):
     assert training_features.shape[1] == testing_features.shape[1], \
         'Dimensions of training and testing data are not equal'
     
-    training_data = DataGenerator(training_features, training_labels)
-    testing_data = DataGenerator(testing_features, testing_labels)
+    training_data = DataGenerator(training_features, training_labels,
+                                global_node = False)
+    testing_data = DataGenerator(testing_features, testing_labels, 
+                                global_node = False)
 
     if distances:
         distances = load_distances(data_dir)

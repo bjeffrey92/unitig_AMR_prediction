@@ -4,7 +4,10 @@ import random
 import logging
 import numpy as np
 import pickle
+import pandas as pd
+from functools import lru_cache
 
+@lru_cache(maxsize = 1)
 def load_training_data(data_dir, k = None, to_dense = True):
     if k is not None:
         with open(
@@ -18,6 +21,7 @@ def load_training_data(data_dir, k = None, to_dense = True):
     labels = torch.load(os.path.join(data_dir, 'training_labels.pt'))
     return features, labels
 
+@lru_cache(maxsize = 1)
 def load_testing_data(data_dir, k = None, to_dense = True):
     if k is not None:
         with open(os.path.join(data_dir, f'{k}_convolved_testing_features.pkl'),
@@ -30,6 +34,15 @@ def load_testing_data(data_dir, k = None, to_dense = True):
     labels = torch.load(os.path.join(data_dir, 'testing_labels.pt'))
     return features, labels
 
+@lru_cache(maxsize = 1)
+def load_metadata(data_dir):
+    training_metadata = pd.read_csv(
+                            os.path.join(data_dir, 'training_metadata.csv'))
+    testing_metadata = pd.read_csv(
+                            os.path.join(data_dir, 'testing_metadata.csv'))
+    return training_metadata, testing_metadata
+
+@lru_cache(maxsize = 1)
 def load_adjacency_matrix(data_dir, degree_normalised = True):
     if degree_normalised:
         adj = torch.load(os.path.join(data_dir, 
