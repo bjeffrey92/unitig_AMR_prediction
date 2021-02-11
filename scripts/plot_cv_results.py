@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pickle
 import glob
 import os
+import re
 
 
 def load_data(data_dir):
@@ -33,6 +34,40 @@ def convert_to_dataframe(CV_results):
     return pd.DataFrame(df_dictionary)
 
 
+def get_NN_results(data_dir, file_suffix = '.tsv'):
+    '''
+    Returns data from NN fitting metrics in form to be plotted with plot_results
+    '''
+    if not data_dir.endswith('/'):
+        data_dir += '/'
+
+    input_files = glob.glob(data_dir + f'*{file_suffix}')
+    Abs = [os.path.split(i)[-1].split('_mic')[0] + '_mic' for i in input_files]
+    
+    data_dict = {}
+    for Ab in set(Abs):
+        Ab_files = [i for i in input_files if i.startswith(data_dir + Ab)]
+        Ab_accuracies = [None] * len(Ab_files)
+        i = 0
+        for f in Ab_files:
+            left_out_clade = re.search(r'clade_(.*?)_left', f).group(1)
+            last_line = pd.read_csv(Ab_files[0], sep = '\t').iloc[-1]
+            accuracies = last_line[['training_data_acc', 
+                                    'testing_data_acc',
+                                    'validation_data_acc']]
+            accuracies['left_out_clade'] = int(left_out_clade)
+            Ab_accuracies[i] = accuracies
+            i += 1
+        df = pd.concat(Ab_accuracies, axis = 1).transpose()
+        df.set_index('left_out_clade', inplace = True)
+        df.columns = ['training_accuracy', 
+                    'testing_accuracy',
+                    'validation_accuracy']
+        data_dict[Ab] = df
+
+    return data_dict
+
+
 def plot_results(data, filename):
     fig, axs = plt.subplots(1, 4, sharey = True)
     width = 0.2
@@ -56,10 +91,11 @@ def plot_results(data, filename):
 
     fig.savefig(filename)
 
+
 if __name__ == '__main__':
     data_dir = 'lasso_model/results/linear_model_results/cross_validation_results/'
-
     data = load_data(data_dir)
+
     Abs = list(data.keys())
     Abs.sort() #to maintain order
     data = {Ab:convert_to_dataframe(data[Ab]) for Ab in Abs}
