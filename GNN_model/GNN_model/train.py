@@ -215,6 +215,8 @@ def main(args):
 
     Ab = 'log2_cro_mic'
     for left_out_clade in [1,2,3]:
+        start_time = time.time()
+
         data_dir = os.path.join('data/model_inputs/freq_5_95', Ab)
 
         all_data = load_data(data_dir, distances = False, adj = True, 
