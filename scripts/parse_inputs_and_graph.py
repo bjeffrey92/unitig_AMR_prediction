@@ -1,5 +1,4 @@
 import math
-import sys
 import logging
 import csv
 import pandas as pd
@@ -174,8 +173,7 @@ def split_training_and_testing(rtab_file,
         i = 1
         j = 1
         for row in reader:
-            sys.stdout.write(f'\rprocessing {j} of {num_unitigs} unitigs')
-            sys.stdout.flush()
+            print(f'\rprocessing {j} of {num_unitigs} unitigs', end = '')
             j += 1
             
             #skip if unitig not selected by gwas
@@ -191,8 +189,7 @@ def split_training_and_testing(rtab_file,
             testing_rows[i] = row[:1] + row_array[testing_indices].tolist()
             
             i += 1
-        sys.stdout.write('')
-        sys.stdout.flush()
+        print('', flush = True)
 
     with open(training_rtab_file, 'w', newline = '') as csvfile:
         writer = csv.writer(csvfile, delimiter = '\t')
@@ -234,10 +231,8 @@ def load_features(rtab_file, mapping_dict, adj_tensor):
                         y_idx.append(int(node))
                         values.append(1)
             i += 1
-            sys.stdout.write(f'\r{i}/{num_unitigs} unitigs processed') # \r adds on same line
-            sys.stdout.flush()
-        sys.stdout.write('')
-        sys.stdout.flush()
+            print(f'\r{i}/{num_unitigs} unitigs processed', end = '')
+        print('', flush = True)
 
     indices = torch.LongTensor([x_idx, y_idx])
     shape = (num_samples, adj_tensor.shape[1])
@@ -351,7 +346,7 @@ def load_labels(metadata, label_column):
 
 def save_data(save_dir, training_features, testing_features, 
                 training_labels, testing_labels, adjacency_matrix,
-                distances, training_metadata, testing_metadata,
+                training_metadata, testing_metadata, distances = None,
                 gwas_selections = []):
     
     if gwas_selections:
@@ -372,8 +367,9 @@ def save_data(save_dir, training_features, testing_features,
     torch.save(adjacency_matrix, 
             os.path.join(out_dir, 'unitig_adjacency_tensor.pt'))
 
-    with open(os.path.join(out_dir, 'distances_dict.pkl'), 'wb') as a:
-        pickle.dump(distances, a)
+    if distances != None:
+        with open(os.path.join(out_dir, 'distances_dict.pkl'), 'wb') as a:
+            pickle.dump(distances, a)
 
     training_metadata.to_csv(
                             os.path.join(out_dir, 'training_metadata.csv'),
@@ -447,7 +443,8 @@ if __name__ == '__main__':
                 filter_unitigs(training_features, testing_features, 
                             adj_tensor)
 
-            distances = get_distances(adj)
+            # distances = get_distances(adj)
+            distances = None
 
             #ensure metadata is in same order as features for label extraction
             training_metadata = order_metadata(metadata, training_rtab_file)
@@ -460,6 +457,5 @@ if __name__ == '__main__':
         save_data(out_dir, 
                 training_features, testing_features, 
                 training_labels, testing_labels, 
-                adj, distances, 
-                training_metadata, testing_metadata, 
-                gwas_selections)
+                adj, training_metadata, testing_metadata, 
+                distances, gwas_selections)
