@@ -7,7 +7,7 @@ from sklearn.exceptions import ConvergenceWarning
 from numpy import linspace, sort, array_equal
 
 from lasso_model.utils import load_training_data, load_testing_data, \
-                            load_adjacency_matrix, accuracy, convolve, \
+                            load_adjacency_matrix, mean_acc_per_bin, convolve, \
                             load_metadata
 
 import pickle
@@ -62,11 +62,14 @@ def fit_model_by_grid_search(training_features, training_labels,
         testing_predictions = reg.predict(testing_features)
         validation_predictions = reg.predict(validation_features)
 
-        training_accuracy = accuracy(torch.tensor(training_predictions), 
+        training_accuracy = mean_acc_per_bin(
+                                    torch.tensor(training_predictions), 
                                     training_labels)
-        testing_accuracy = accuracy(torch.tensor(testing_predictions), 
+        testing_accuracy = mean_acc_per_bin(
+                                    torch.tensor(testing_predictions), 
                                     testing_labels)
-        validation_accuracy = accuracy(torch.tensor(validation_predictions),
+        validation_accuracy = mean_acc_per_bin(
+                                        torch.tensor(validation_predictions),
                                         validation_labels)
 
         accuracy_dict[a] = {'training_accuracy': training_accuracy, 
@@ -158,6 +161,8 @@ if __name__ == '__main__':
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         data_dir = os.path.join(root_dir, outcome)
+        results_dir = \
+            'lasso_model/results/linear_model_results/mean_accuracy_per_bin'
 
         training_data = load_training_data(data_dir)
         testing_data = load_testing_data(data_dir)
@@ -168,10 +173,11 @@ if __name__ == '__main__':
                                         training_metadata, 
                                         testing_metadata)
 
-        fname = outcome + '_CV_lasso_predictions.pkl'
+        fname = os.path.join(results_dir, outcome + '_CV_lasso_predictions.pkl')
         save_output(results_dict, fname)
 
         for left_out_clade in results_dict.keys():
-            fname = outcome + \
-                f'_validation_clade_{left_out_clade}_lasso_predictions.png'
+            fname = os.path.join(results_dir,
+                outcome + \
+                f'_validation_clade_{left_out_clade}_lasso_predictions.png')
             plot_results(results_dict[left_out_clade], fname)

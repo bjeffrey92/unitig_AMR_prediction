@@ -44,7 +44,7 @@ def train_test_validation_split(left_out_clade, training_features,
 
     return clade_training_features, clade_testing_features, validation_features
 
-def format_data(data_dir, out_dir, left_out_clade):
+def format_data(data_dir, left_out_clade):
     adj = load_adjacency_matrix(data_dir, degree_normalised=False)
     adj = adj.coalesce()
     indices = adj.indices().tolist()
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
-    data_by_left_out_clade = format_data(data_dir, out_dir, left_out_clade)
+    data_by_left_out_clade = format_data(data_dir, left_out_clade)
 
     G_train = data_by_left_out_clade['G_train']
     G_test = data_by_left_out_clade['G_test']

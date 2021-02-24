@@ -1,9 +1,10 @@
+#!/usr/bin/env python3
+
 import sys
 import os 
 import pickle 
 import numpy as np
 import itertools
-import matplotlib.pyplot as plt
 from math import log10
 from torch import tensor
 from pandas import Series
@@ -13,7 +14,7 @@ from sklearn.svm import SVR
 from sklearn.metrics import mean_squared_error
 
 from lasso_model.utils import load_training_data, load_testing_data
-from GNN_model.utils import accuracy, load_metadata
+from GNN_model.utils import mean_acc_per_bin, load_metadata
 
 
 @lru_cache(maxsize = 1)
@@ -74,11 +75,11 @@ def train_evaluate(Ab, left_out_clade, C, epsilon, verbose = False):
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
 
-    train_acc = accuracy(tensor(model.predict(k_train)), 
+    train_acc = mean_acc_per_bin(tensor(model.predict(k_train)), 
                         tensor(training_labels))
-    test_acc = accuracy(tensor(model.predict(k_test)), 
+    test_acc = mean_acc_per_bin(tensor(model.predict(k_test)), 
                         tensor(testing_labels))
-    validation_acc = accuracy(tensor(model.predict(k_validate)), 
+    validation_acc = mean_acc_per_bin(tensor(model.predict(k_validate)), 
                             tensor(validation_labels))
     
     if verbose:
@@ -101,11 +102,11 @@ def fit_best_model(Ab, left_out_clade, C, epsilon):
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
 
-    train_acc = accuracy(tensor(model.predict(k_train)), 
+    train_acc = mean_acc_per_bin(tensor(model.predict(k_train)), 
                         tensor(training_labels))
-    test_acc = accuracy(tensor(model.predict(k_test)), 
+    test_acc = mean_acc_per_bin(tensor(model.predict(k_test)), 
                         tensor(testing_labels))
-    validation_acc = accuracy(tensor(model.predict(k_validate)), 
+    validation_acc = mean_acc_per_bin(tensor(model.predict(k_validate)), 
                             tensor(validation_labels))
 
     return {'training_accuracy': train_acc, 
@@ -113,11 +114,11 @@ def fit_best_model(Ab, left_out_clade, C, epsilon):
             'validation_accuracy': validation_acc}
 
 
-def save_CV_results(accuracies, out_dir):
+def save_CV_results(accuracies, out_dir, fname):
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
-    out_file = os.path.join(out_dir, 'SVR_CV_results.pkl')
+    out_file = os.path.join(out_dir, fname)
     with open(out_file, 'wb') as a:
         pickle.dump(accuracies, a)
 
@@ -134,7 +135,7 @@ if __name__ == '__main__':
         print(f'Ab = {Ab}, left out clade = {left_out_clade}')
         
         partial_fitting_function = partial(train_evaluate, 
-                                    Ab = Ab, left_out_clade =  left_out_clade)
+                                    Ab = Ab, left_out_clade = left_out_clade)
 
         optimizer = BayesianOptimization(
             f = partial_fitting_function,
@@ -155,4 +156,5 @@ if __name__ == '__main__':
         clade_wise_results[left_out_clade] = {(C, epsilon): accuracies}
 
     out_dir = f'kernel_learning/{Ab}/cross_validation/SVR_results'
-    save_CV_results(clade_wise_results, out_dir)
+    fname = 'SVR_CV_results_mean_acc_per_bin.pkl'
+    save_CV_results(clade_wise_results, out_dir, fname)
