@@ -6,7 +6,9 @@ import os
 import re
 
 
-def load_data(data_dir):
+def load_lasso_data(data_dir):
+    if not data_dir.endswith('/'):
+        data_dir += '/'
     input_files = glob.glob(data_dir + 'log2*pkl')
     Abs = [os.path.split(i)[-1].split('_mic')[0] + '_mic' for i in input_files]
     data_dict = {}
@@ -68,6 +70,22 @@ def get_NN_results(data_dir, file_suffix = '.tsv'):
     return data_dict
 
 
+def get_SVR_results(dir_pattern):
+    Abs = ['log2_azm_mic', 
+            'log2_cip_mic',
+            'log2_cro_mic',
+            'log2_cfx_mic']
+
+    input_files = [
+        os.path.join(dir_pattern[0], Ab, dir_pattern[1]) for Ab in Abs]
+
+    data_dict = {}
+    for i in range(len(Abs)):
+        with open(input_files[i], 'rb') as a:
+            data_dict[Abs[i]] = pickle.load(a)
+    return data_dict
+
+
 def plot_results(data, filename):
     fig, axs = plt.subplots(1, 4, sharey = True)
     width = 0.2
@@ -93,8 +111,14 @@ def plot_results(data, filename):
 
 
 if __name__ == '__main__':
-    data_dir = 'lasso_model/results/linear_model_results/cross_validation_results/'
-    data = load_data(data_dir)
+    # data_dir = 'lasso_model/results/linear_model_results/cross_validation_results/'
+    # data = load_lasso_data(data_dir)
+
+    #svr results are stored within subdir with name of Ab, unlike rest of results which are all stored in one dir
+    dir_pattern = ('kernel_learning', 
+            'cross_validation/SVR_results/SVR_CV_results_mean_acc_per_bin.pkl')
+    data_dir = '.'
+    data = get_SVR_results(dir_pattern)
 
     Abs = list(data.keys())
     Abs.sort() #to maintain order
