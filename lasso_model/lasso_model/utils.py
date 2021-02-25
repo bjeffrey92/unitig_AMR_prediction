@@ -24,7 +24,7 @@ def load_metadata(data_dir):
                             os.path.join(data_dir, 'testing_metadata.csv'))
     return training_metadata, testing_metadata
 
-def accuracy(predictions: torch.tensor, labels: torch.tensor):
+def accuracy(predictions: torch.Tensor, labels: torch.Tensor):
     '''
     Prediction accuracy defined as percentage of predictions within 1 twofold 
     dilution of true value
@@ -67,6 +67,7 @@ def mean_acc_per_bin(predictions: torch.Tensor, labels: torch.Tensor,
         'binned_labels': binned_labels
     }) #to allow quick searches across bins
 
+    #percentage accuracy per bin
     def _get_accuracy(d):
         acc = accuracy(torch.tensor(d.labels.to_list()), 
                       torch.tensor(d.predictions.to_list()))   

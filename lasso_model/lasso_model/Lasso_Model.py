@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import torch
 import matplotlib.pyplot as plt
 from sklearn.linear_model import Lasso
@@ -82,24 +80,24 @@ def fit_model_by_grid_search(training_features, training_labels,
 def leave_one_out_CV(training_data, testing_data, 
                     training_metadata, testing_metadata):
 
-    clades = training_metadata.Clade.unique()
-    assert array_equal(sort(clades), sort(testing_metadata.Clade.unique())), \
+    clades = training_metadata.clusters.unique()
+    assert array_equal(sort(clades), sort(testing_metadata.clusters.unique())), \
         'Different clades found in training and testing metadata'
 
-    alphas = linspace(0.01, 0.1, 10)
+    alphas = linspace(0.01, 0.1, 5)
     
     results_dict = {}
     for left_out_clade in clades:
         logging.info(
             f'Formatting data for model with clade {left_out_clade} left out')
         training_indices = training_metadata.loc[
-                            training_metadata.Clade != left_out_clade].index
+                            training_metadata.clusters != left_out_clade].index
         testing_indices = testing_metadata.loc[
-                            testing_metadata.Clade != left_out_clade].index
+                            testing_metadata.clusters != left_out_clade].index
         validation_indices_1 = training_metadata.loc[
-                            training_metadata.Clade == left_out_clade].index #extract data from training set
+                            training_metadata.clusters == left_out_clade].index #extract data from training set
         validation_indices_2 = testing_metadata.loc[
-                            testing_metadata.Clade == left_out_clade].index #extract data from testing set
+                            testing_metadata.clusters == left_out_clade].index #extract data from testing set
 
         training_features = torch.index_select(training_data[0], 0, 
                                             torch.tensor(training_indices))
@@ -179,5 +177,5 @@ if __name__ == '__main__':
         for left_out_clade in results_dict.keys():
             fname = os.path.join(results_dir,
                 outcome + \
-                f'_validation_clade_{left_out_clade}_lasso_predictions.png')
+                f'_validation_cluster_{left_out_clade}_lasso_predictions.png')
             plot_results(results_dict[left_out_clade], fname)

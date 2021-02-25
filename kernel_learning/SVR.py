@@ -18,24 +18,24 @@ from GNN_model.utils import mean_acc_per_bin, load_metadata
 
 
 @lru_cache(maxsize = 1)
-def load_data(Ab: str, left_out_clade: int)-> tuple: 
+def load_data(Ab: str, left_out_cluster: int)-> tuple: 
     root_dir = 'data/model_inputs/freq_5_95/'
     data_dir = os.path.join(root_dir, Ab)
 
-    left_out_clade = int(left_out_clade)
+    left_out_cluster = int(left_out_cluster)
 
     train_labels = load_training_data(data_dir)[1].tolist()
     test_labels = load_testing_data(data_dir)[1].tolist()
     training_metadata, testing_metadata = load_metadata(data_dir)
 
     training_indices = training_metadata.loc[
-                        training_metadata.Clade != left_out_clade].index
+                        training_metadata.clusters != left_out_cluster].index
     testing_indices = testing_metadata.loc[
-                        testing_metadata.Clade != left_out_clade].index
+                        testing_metadata.clusters != left_out_cluster].index
     validation_indices_1 = training_metadata.loc[
-                        training_metadata.Clade == left_out_clade].index #extract data from training set
+                        training_metadata.clusters == left_out_cluster].index #extract data from training set
     validation_indices_2 = testing_metadata.loc[
-                        testing_metadata.Clade == left_out_clade].index #extract data from testing set
+                        testing_metadata.clusters == left_out_cluster].index #extract data from testing set
     
     training_labels = Series(train_labels)[training_indices].tolist()
     testing_labels = Series(test_labels)[testing_indices].tolist()
@@ -61,9 +61,9 @@ def load_data(Ab: str, left_out_clade: int)-> tuple:
             (k_validate, validation_labels)
 
 
-def train_evaluate(Ab, left_out_clade, C, epsilon, verbose = False):
+def train_evaluate(Ab, left_out_cluster, C, epsilon, verbose = False):
 
-    train_data, test_data, validation_data = load_data(Ab, left_out_clade)
+    train_data, test_data, validation_data = load_data(Ab, left_out_cluster)
     k_train, training_labels = train_data
     k_test, testing_labels = test_data
     k_validate, validation_labels = validation_data
@@ -92,9 +92,9 @@ def train_evaluate(Ab, left_out_clade, C, epsilon, verbose = False):
     return - mean_squared_error(validation_labels, model.predict(k_validate))
 
 
-def fit_best_model(Ab, left_out_clade, C, epsilon):
+def fit_best_model(Ab, left_out_cluster, C, epsilon):
     
-    train_data, test_data, validation_data = load_data(Ab, left_out_clade)
+    train_data, test_data, validation_data = load_data(Ab, left_out_cluster)
     k_train, training_labels = train_data
     k_test, testing_labels = test_data
     k_validate, validation_labels = validation_data
@@ -131,11 +131,11 @@ if __name__ == '__main__':
 
     Ab = sys.argv[1]
     clade_wise_results = {}
-    for left_out_clade in [1,2,3]:
-        print(f'Ab = {Ab}, left out clade = {left_out_clade}')
+    for left_out_cluster in list(range(1, 13)):
+        print(f'Ab = {Ab}, left out cluster = {left_out_cluster}')
         
         partial_fitting_function = partial(train_evaluate, 
-                                    Ab = Ab, left_out_clade = left_out_clade)
+                                    Ab = Ab, left_out_cluster = left_out_cluster)
 
         optimizer = BayesianOptimization(
             f = partial_fitting_function,
@@ -144,17 +144,17 @@ if __name__ == '__main__':
         )
 
         optimizer.maximize()
-        print(f'Completed hyperparam optimisation: {Ab}, {left_out_clade}')
+        print(f'Completed hyperparam optimisation: {Ab}, {left_out_cluster}')
         
         best_hyperparams = optimizer.max['params']
         C = 10 ** best_hyperparams['C']
         epsilon = 10 ** best_hyperparams['epsilon']
 
-        accuracies = fit_best_model(Ab, left_out_clade, C, epsilon)
-        print(f'Fitted model with best hyperparams: {Ab}, {left_out_clade}')
+        accuracies = fit_best_model(Ab, left_out_cluster, C, epsilon)
+        print(f'Fitted model with best hyperparams: {Ab}, {left_out_cluster}')
 
-        clade_wise_results[left_out_clade] = {(C, epsilon): accuracies}
+        clade_wise_results[left_out_cluster] = {(C, epsilon): accuracies}
 
-    out_dir = f'kernel_learning/{Ab}/cross_validation/SVR_results'
+    out_dir = f'kernel_learning/{Ab}/cluster_wise_cross_validation/SVR_results'
     fname = 'SVR_CV_results_mean_acc_per_bin.pkl'
     save_CV_results(clade_wise_results, out_dir, fname)
