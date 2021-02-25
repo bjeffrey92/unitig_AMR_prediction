@@ -152,24 +152,40 @@ def test(data, model, loss_function, accuracy, adj = None):
     return loss, acc
 
 
-def load_data(data_dir: str, distances: bool, adj: bool, left_out_clade: int):
+def load_data(data_dir: str, distances: bool, adj: bool, 
+            left_out_clade = None, left_out_cluster = None):
     if distances == adj:
         raise ValueError('One of distances or adj must equal True')
+    if left_out_clade is not None and left_out_cluster is not None:
+        raise ValueError(
+            'Only one of clusters  or clades can be used for cross validation')
 
     training_data = utils.load_training_data(data_dir)
     testing_data = utils.load_testing_data(data_dir)
     training_metadata, testing_metadata = utils.load_metadata(data_dir) #for CV split
 
-    logging.info(
-        f'Formatting data for model with clade {left_out_clade} left out')
-    training_indices = training_metadata.loc[
-                        training_metadata.Clade != left_out_clade].index
-    testing_indices = testing_metadata.loc[
-                        testing_metadata.Clade != left_out_clade].index
-    validation_indices_1 = training_metadata.loc[
-                        training_metadata.Clade == left_out_clade].index #extract data from training set
-    validation_indices_2 = testing_metadata.loc[
-                        testing_metadata.Clade == left_out_clade].index #extract data from testing set
+    if left_out_clade is not None:
+        logging.info(
+            f'Formatting data for model with clade {left_out_clade} left out')
+        training_indices = training_metadata.loc[
+                            training_metadata.Clade != left_out_clade].index
+        testing_indices = testing_metadata.loc[
+                            testing_metadata.Clade != left_out_clade].index
+        validation_indices_1 = training_metadata.loc[
+                            training_metadata.Clade == left_out_clade].index #extract data from training set
+        validation_indices_2 = testing_metadata.loc[
+                            testing_metadata.Clade == left_out_clade].index #extract data from testing set
+    if left_out_cluster is not None:
+        logging.info(
+            f'Formatting data for model with clade {left_out_cluster} left out')
+        training_indices = training_metadata.loc[
+                            training_metadata.clusters != left_out_cluster].index
+        testing_indices = testing_metadata.loc[
+                            testing_metadata.clusters != left_out_cluster].index
+        validation_indices_1 = training_metadata.loc[
+                            training_metadata.clusters == left_out_cluster].index #extract data from training set
+        validation_indices_2 = testing_metadata.loc[
+                            testing_metadata.clusters == left_out_cluster].index #extract data from testing set
 
     training_features = torch.index_select(training_data[0], 0, 
                                         torch.tensor(training_indices))
