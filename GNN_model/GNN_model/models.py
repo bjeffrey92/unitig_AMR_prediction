@@ -68,8 +68,8 @@ class GCNGlobalNode(nn.Module):
 
 
 class GCNMaxPooling(nn.Module):
-    def __init__(self, n_feat, conv_1, conv_2, n_hid_1, n_hid_2, 
-                out_dim, dropout):
+    def __init__(self, n_feat, conv_1, conv_2 = 0, n_hid_1 = 0, n_hid_2 = 0, 
+                out_dim = 1, dropout = 0):
         super(GCNMaxPooling, self).__init__()
 
         self.gc1 = GraphConvolution(n_feat, conv_1)
