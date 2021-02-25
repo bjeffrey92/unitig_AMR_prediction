@@ -110,6 +110,10 @@ def mean_acc_per_bin(predictions: torch.Tensor, labels: torch.Tensor,
         raise NotImplementedError(
             'If an integer, bin_size must be >= 1')
     
+    #have to detach from computation graph so can be added to df (below)
+    predictions = predictions.detach().clone()
+    labels = labels.detach().clone()
+
     #apply Freedman-Diaconis rule to get optimal bin size
     #https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
     if bin_size == 'optimise': 

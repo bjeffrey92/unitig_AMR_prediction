@@ -80,7 +80,7 @@ def fit_model_by_grid_search(training_features, training_labels,
 def leave_one_out_CV(training_data, testing_data, 
                     training_metadata, testing_metadata):
 
-    clades = training_metadata.clusters.unique()
+    clades = sort(training_metadata.clusters.unique())
     assert array_equal(sort(clades), sort(testing_metadata.clusters.unique())), \
         'Different clades found in training and testing metadata'
 
