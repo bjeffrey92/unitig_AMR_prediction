@@ -158,9 +158,9 @@ if __name__ == '__main__':
 
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
-        data_dir = os.path.join(root_dir, outcome)
+        data_dir = os.path.join(root_dir, outcome, 'gwas_filtered')
         results_dir = \
-            'lasso_model/results/linear_model_results/mean_accuracy_per_bin'
+            'lasso_model/results/linear_model_results/gwas_filtered/cluster_wise_CV'
 
         training_data = load_training_data(data_dir)
         testing_data = load_testing_data(data_dir)
@@ -174,8 +174,8 @@ if __name__ == '__main__':
         fname = os.path.join(results_dir, outcome + '_CV_lasso_predictions.pkl')
         save_output(results_dict, fname)
 
-        for left_out_clade in results_dict.keys():
-            fname = os.path.join(results_dir,
-                outcome + \
-                f'_validation_cluster_{left_out_clade}_lasso_predictions.png')
-            plot_results(results_dict[left_out_clade], fname)
+        # for left_out_clade in results_dict.keys():
+        #     fname = os.path.join(results_dir,
+        #         outcome + \
+        #         f'_validation_cluster_{left_out_clade}_lasso_predictions.png')
+        #     plot_results(results_dict[left_out_clade], fname)
