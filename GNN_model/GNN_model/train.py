@@ -177,7 +177,7 @@ def load_data(data_dir: str, distances: bool, adj: bool,
                             testing_metadata.Clade == left_out_clade].index #extract data from testing set
     if left_out_cluster is not None:
         logging.info(
-            f'Formatting data for model with clade {left_out_cluster} left out')
+            f'Formatting data for model with cluster {left_out_cluster} left out')
         training_indices = training_metadata.loc[
                             training_metadata.clusters != left_out_cluster].index
         testing_indices = testing_metadata.loc[
