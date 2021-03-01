@@ -86,7 +86,7 @@ def get_SVR_results(dir_pattern):
     return data_dict
 
 
-def plot_results(data, filename):
+def bar_plot_of_results(data, filename):
     fig, axs = plt.subplots(1, 4, sharey = True)
     width = 0.2
     n = 0
@@ -110,6 +110,27 @@ def plot_results(data, filename):
     fig.savefig(filename)
 
 
+def box_plot_of_results(data, filename):
+    fig, axs = plt.subplots(1, 4, sharey = True)
+    width = 0.2
+    n = 0
+    for Ab in data.keys():
+        df = data[Ab]
+        df = df.rename(columns = {'training_accuracy':'Train', 
+                                'testing_accuracy':'Test', 
+                                'validation_accuracy':'Validate'})
+        axs[n].boxplot(df, notch = False, labels = df.columns)
+        axs[n].set_title(Ab.upper().split('_')[1])
+        axs[n].tick_params(labelrotation = 90)
+        n += 1
+
+    fig.text(0, 0.5, 'Mean Accuracy per MIC Bin', 
+            va='center', rotation='vertical')
+    fig.tight_layout()
+
+    fig.savefig(filename)
+
+
 if __name__ == '__main__':
     # data_dir = 'lasso_model/results/linear_model_results/cross_validation_results/'
     # data = load_lasso_data(data_dir)
@@ -125,4 +146,4 @@ if __name__ == '__main__':
     data = {Ab:convert_to_dataframe(data[Ab]) for Ab in Abs}
     data = {Ab:df.set_index('left_out_clade') for Ab, df in data.items()}
 
-    plot_results(data, os.path.join(data_dir, 'CV_accuracy.png'))
+    box_plot_of_results(data, os.path.join(data_dir, 'CV_accuracy.png'))
