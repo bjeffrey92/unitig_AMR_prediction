@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 import itertools
 from math import log10
-from torch import as_tensor
+import torch
 from pandas import Series
 from bayes_opt import BayesianOptimization
 from functools import lru_cache, partial
@@ -74,10 +74,10 @@ def train_evaluate(Ab, left_out_cluster, C, epsilon, verbose = False):
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
 
-    train_acc = mean_acc_per_bin(as_tensor(model.predict(k_train)), 
-                        as_tensor(training_labels))
-    test_acc = mean_acc_per_bin(as_tensor(model.predict(k_test)), 
-                        as_tensor(testing_labels))
+    train_acc = mean_acc_per_bin(torch.as_tensor(model.predict(k_train)), 
+                        torch.as_tensor(training_labels))
+    test_acc = mean_acc_per_bin(torch.as_tensor(model.predict(k_test)), 
+                        torch.as_tensor(testing_labels))
     
     if verbose:
         print(f'{C, epsilon}\n', 
@@ -98,14 +98,14 @@ def fit_best_model(Ab, left_out_cluster, C, epsilon):
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
 
-    #convert to as_tensor for compatibility 
-    train_pred = as_tensor(model.predict(k_train))
-    test_pred = as_tensor(model.predict(k_test))
-    validation_pred = as_tensor(model.predict(k_validate))
+    #convert to torch.as_tensor for compatibility 
+    train_pred = torch.as_tensor(model.predict(k_train))
+    test_pred = torch.as_tensor(model.predict(k_test))
+    validation_pred = torch.as_tensor(model.predict(k_validate))
 
-    training_labels = as_tensor(training_labels)
-    testing_labels = as_tensor(testing_labels)
-    validation_labels = as_tensor(validation_labels)
+    training_labels = torch.as_tensor(training_labels)
+    testing_labels = torch.as_tensor(testing_labels)
+    validation_labels = torch.as_tensor(validation_labels)
 
     train_acc = mean_acc_per_bin(train_pred, training_labels)
     test_acc = mean_acc_per_bin(test_pred, testing_labels)
