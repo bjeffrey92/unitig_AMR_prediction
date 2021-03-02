@@ -94,28 +94,58 @@ def save(out_dir, left_out_clade, G_train, G_test, G_validate):
     with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_validation_data_grakel_representation.pkl'), 'wb') as a:
         pickle.dump(G_validate, a)
 
+def formatting_complete(out_dir, left_out_clade):
+    formatted_files = []
+    formatted_files.append(os.path.join(out_dir, 
+        f'clade_{left_out_clade}_left_out_training_data_grakel_representation.pkl'))
+    formatted_files.append(os.path.join(out_dir, 
+         f'clade_{left_out_clade}_left_out_testing_data_grakel_representation.pkl'))
+    formatted_files.append(os.path.join(out_dir, 
+        f'clade_{left_out_clade}_left_out_validation_data_grakel_representation.pkl'))
+
+    if all([os.path.isfile(i) for i in formatted_files]):
+        return True
+    else:
+        return False
+
+def load_formatted_data(out_dir, left_out_clade):
+    with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_training_data_grakel_representation.pkl'), 'rb') as a:
+        G_train = pickle.load(a)
+    with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_testing_data_grakel_representation.pkl'), 'rb') as a:
+        G_test = pickle.load(a)
+    with open(os.path.join(out_dir, f'clade_{left_out_clade}_left_out_validation_data_grakel_representation.pkl'), 'rb') as a:
+        G_validate = pickle.load(a)
+    
+    return G_train, G_test, G_validate
+
 
 if __name__ == '__main__':
-    root_dir = 'data/model_inputs/freq_5_95/'
-
     Ab = sys.argv[1]
     left_out_clade = int(sys.argv[2])
     fit = True
 
-    data_dir = os.path.join(root_dir, Ab, 'gwas_filtered')
+    root_dir = 'data/model_inputs/freq_5_95/'
     out_dir = f'kernel_learning/{Ab}/gwas_filtered/cluster_CV'
-    if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
 
-    data_by_left_out_cluster = format_data(data_dir, left_out_clade)
+    pre_formatted = formatting_complete(out_dir, left_out_clade)
 
-    G_train = data_by_left_out_cluster['G_train']
-    G_test = data_by_left_out_cluster['G_test']
-    G_validate = data_by_left_out_cluster['G_validate']
+    if not pre_formatted:
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
 
-    save(out_dir, left_out_clade, G_train, G_test, G_validate)
+        data_dir = os.path.join(root_dir, Ab, 'gwas_filtered')
+        data_by_left_out_cluster = format_data(data_dir, left_out_clade)
+
+        G_train = data_by_left_out_cluster['G_train']
+        G_test = data_by_left_out_cluster['G_test']
+        G_validate = data_by_left_out_cluster['G_validate']
+
+        save(out_dir, left_out_clade, G_train, G_test, G_validate)
 
     if fit:
+        if pre_formatted:
+            G_train, G_test, G_train = load_formatted_data(out_dir, 
+                                                        left_out_clade)
         wl_kernel, k_train = fit_wl_kernel(G_train)
         with open(os.path.join(out_dir, 
             f'clade_{left_out_clade}_left_out_k_train.pkl'), 'wb') as a:
