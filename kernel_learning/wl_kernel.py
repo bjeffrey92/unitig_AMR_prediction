@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import grakel
 import pickle
 import logging
@@ -19,26 +21,26 @@ def train_test_validation_split(left_out_clade, training_features,
     logging.info(
         f'Formatting data for model with clade {left_out_clade} left out')
     training_indices = training_metadata.loc[
-                        training_metadata.Clade != left_out_clade].index
+                        training_metadata.clusters != left_out_clade].index
     testing_indices = testing_metadata.loc[
-                        testing_metadata.Clade != left_out_clade].index
+                        testing_metadata.clusters != left_out_clade].index
     validation_indices_1 = training_metadata.loc[
-                        training_metadata.Clade == left_out_clade].index #extract data from training set
+                        training_metadata.clusters == left_out_clade].index #extract data from training set
     validation_indices_2 = testing_metadata.loc[
-                        testing_metadata.Clade == left_out_clade].index #extract data from testing set
+                        testing_metadata.clusters == left_out_clade].index #extract data from testing set
 
     clade_training_features = torch.index_select(training_features, 0, 
-                                        torch.tensor(training_indices, 
+                                        torch.as_tensor(training_indices, 
                                                     dtype = torch.int64))
     clade_testing_features = torch.index_select(testing_features, 0, 
-                                        torch.tensor(testing_indices,
+                                        torch.as_tensor(testing_indices,
                                                     dtype = torch.int64))    
     validation_features = torch.cat([
                             torch.index_select(training_features, 0, 
-                                        torch.tensor(validation_indices_1,
+                                        torch.as_tensor(validation_indices_1,
                                                     dtype = torch.int64)),
                             torch.index_select(testing_features, 0, 
-                                        torch.tensor(validation_indices_2,
+                                        torch.as_tensor(validation_indices_2,
                                                     dtype = torch.int64))
                             ])
 
@@ -95,36 +97,39 @@ def save(out_dir, left_out_clade, G_train, G_test, G_validate):
 
 if __name__ == '__main__':
     root_dir = 'data/model_inputs/freq_5_95/'
-    
+
     Ab = sys.argv[1]
     left_out_clade = int(sys.argv[2])
-    data_dir = os.path.join(root_dir, Ab)
-    out_dir = f'kernel_learning/{Ab}/cross_validation_results'
+    fit = True
+
+    data_dir = os.path.join(root_dir, Ab, 'gwas_filtered')
+    out_dir = f'kernel_learning/{Ab}/gwas_filtered/cluster_CV'
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
-    data_by_left_out_clade = format_data(data_dir, left_out_clade)
+    data_by_left_out_cluster = format_data(data_dir, left_out_clade)
 
-    G_train = data_by_left_out_clade['G_train']
-    G_test = data_by_left_out_clade['G_test']
-    G_validate = data_by_left_out_clade['G_validate']
+    G_train = data_by_left_out_cluster['G_train']
+    G_test = data_by_left_out_cluster['G_test']
+    G_validate = data_by_left_out_cluster['G_validate']
 
     save(out_dir, left_out_clade, G_train, G_test, G_validate)
 
-    wl_kernel, k_train = fit_wl_kernel(G_train)
-    with open(os.path.join(out_dir, 
-        f'clade_{left_out_clade}_left_out_k_train.pkl', 'wb')) as a:
-        pickle.dump(k_train, a)
-    with open(os.path.join(
-        f'clade_{left_out_clade}_left_out_wl_kernel.pkl', 'wb')) as a:
-        pickle.dump(wl_kernel, a)
+    if fit:
+        wl_kernel, k_train = fit_wl_kernel(G_train)
+        with open(os.path.join(out_dir, 
+            f'clade_{left_out_clade}_left_out_k_train.pkl'), 'wb') as a:
+            pickle.dump(k_train, a)
+        with open(os.path.join(out_dir,
+            f'clade_{left_out_clade}_left_out_wl_kernel.pkl'), 'wb') as a:
+            pickle.dump(wl_kernel, a)
 
-    k_test = transform_testing_data(wl_kernel, G_test)
-    with open(os.path.join(
-        f'clade_{left_out_clade}_left_out_k_test.pkl', 'wb')) as a:
-        pickle.dump(k_test, a)
+        k_test = transform_testing_data(wl_kernel, G_test)
+        with open(os.path.join(out_dir,
+            f'clade_{left_out_clade}_left_out_k_test.pkl'), 'wb') as a:
+            pickle.dump(k_test, a)
 
-    k_validate = transform_testing_data(wl_kernel, G_validate)
-    with open(os.path.join(
-        f'clade_{left_out_clade}_left_out_k_validate.pkl', 'wb')) as a:
-        pickle.dump(k_validate, a)
+        k_validate = transform_testing_data(wl_kernel, G_validate)
+        with open(os.path.join(out_dir,
+            f'clade_{left_out_clade}_left_out_k_validate.pkl'), 'wb') as a:
+            pickle.dump(k_validate, a)

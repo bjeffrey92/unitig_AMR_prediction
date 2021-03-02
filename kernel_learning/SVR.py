@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 import itertools
 from math import log10
-from torch import tensor
+from torch import as_tensor
 from pandas import Series
 from bayes_opt import BayesianOptimization
 from functools import lru_cache, partial
@@ -20,7 +20,7 @@ from GNN_model.utils import mean_acc_per_bin, load_metadata
 @lru_cache(maxsize = 1)
 def load_data(Ab: str, left_out_cluster: int)-> tuple: 
     root_dir = 'data/model_inputs/freq_5_95/'
-    data_dir = os.path.join(root_dir, Ab)
+    data_dir = os.path.join(root_dir, Ab, 'gwas_filtered')
 
     left_out_cluster = int(left_out_cluster)
 
@@ -42,13 +42,13 @@ def load_data(Ab: str, left_out_cluster: int)-> tuple:
     validation_labels = Series(train_labels)[validation_indices_1].tolist() + \
                     Series(test_labels)[validation_indices_2].tolist() 
 
-    kernel_dir = f'kernel_learning/{Ab}/cross_validation/fitted_kernels/'
+    kernel_dir = f'kernel_learning/{Ab}/gwas_filtered/cluster_CV'
     k_train_file = os.path.join(kernel_dir, 
-                        f'clade_{left_out_clade}_left_out_k_train.pkl')
+                        f'clade_{left_out_cluster}_left_out_k_train.pkl')
     k_test_file = os.path.join(kernel_dir, 
-                        f'clade_{left_out_clade}_left_out_k_test.pkl')
+                        f'clade_{left_out_cluster}_left_out_k_test.pkl')
     k_validate_file = os.path.join(kernel_dir, 
-                        f'clade_{left_out_clade}_left_out_k_validate.pkl')
+                        f'clade_{left_out_cluster}_left_out_k_validate.pkl')
     with open(k_train_file, 'rb') as a:
         k_train = pickle.load(a)
     with open(k_test_file, 'rb') as a:
@@ -63,10 +63,9 @@ def load_data(Ab: str, left_out_cluster: int)-> tuple:
 
 def train_evaluate(Ab, left_out_cluster, C, epsilon, verbose = False):
 
-    train_data, test_data, validation_data = load_data(Ab, left_out_cluster)
+    train_data, test_data, _ = load_data(Ab, left_out_cluster)
     k_train, training_labels = train_data
     k_test, testing_labels = test_data
-    k_validate, validation_labels = validation_data
 
     #hyperparams are selected from log uniform distribution
     C = 10 ** C
@@ -75,21 +74,18 @@ def train_evaluate(Ab, left_out_cluster, C, epsilon, verbose = False):
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
 
-    train_acc = mean_acc_per_bin(tensor(model.predict(k_train)), 
-                        tensor(training_labels))
-    test_acc = mean_acc_per_bin(tensor(model.predict(k_test)), 
-                        tensor(testing_labels))
-    validation_acc = mean_acc_per_bin(tensor(model.predict(k_validate)), 
-                            tensor(validation_labels))
+    train_acc = mean_acc_per_bin(as_tensor(model.predict(k_train)), 
+                        as_tensor(training_labels))
+    test_acc = mean_acc_per_bin(as_tensor(model.predict(k_test)), 
+                        as_tensor(testing_labels))
     
     if verbose:
         print(f'{C, epsilon}\n', 
             f'Training Data Accuracy = {train_acc}\n',
-            f'Testing Data Accuracy = {test_acc}\n',
-            f'Validation Data Accuracy = {validation_acc}\n')
+            f'Testing Data Accuracy = {test_acc}\n')
 
     #negative error to use maximisation function
-    return - mean_squared_error(validation_labels, model.predict(k_validate))
+    return -mean_squared_error(testing_labels, model.predict(k_test))
 
 
 def fit_best_model(Ab, left_out_cluster, C, epsilon):
@@ -102,16 +98,30 @@ def fit_best_model(Ab, left_out_cluster, C, epsilon):
     model = SVR(C = C, epsilon = epsilon, kernel = 'precomputed')
     model.fit(k_train, training_labels)
 
-    train_acc = mean_acc_per_bin(tensor(model.predict(k_train)), 
-                        tensor(training_labels))
-    test_acc = mean_acc_per_bin(tensor(model.predict(k_test)), 
-                        tensor(testing_labels))
-    validation_acc = mean_acc_per_bin(tensor(model.predict(k_validate)), 
-                            tensor(validation_labels))
+    #convert to as_tensor for compatibility 
+    train_pred = as_tensor(model.predict(k_train))
+    test_pred = as_tensor(model.predict(k_test))
+    validation_pred = as_tensor(model.predict(k_validate))
 
-    return {'training_accuracy': train_acc, 
-            'testing_accuracy': test_acc, 
-            'validation_accuracy': validation_acc}
+    training_labels = as_tensor(training_labels)
+    testing_labels = as_tensor(testing_labels)
+    validation_labels = as_tensor(validation_labels)
+
+    train_acc = mean_acc_per_bin(train_pred, training_labels)
+    test_acc = mean_acc_per_bin(test_pred, testing_labels)
+    validation_acc = mean_acc_per_bin(validation_pred, validation_labels)
+
+    accuracies =  {'training_accuracy': train_acc, 
+                    'testing_accuracy': test_acc, 
+                    'validation_accuracy': validation_acc}
+    model_outputs = {'training_predictions': train_pred,
+                    'training_labels': training_labels,
+                    'testing_predictions': test_pred,
+                    'testing_labels': testing_labels,
+                    'validation_predictions': validation_pred,
+                    'validation_labels': validation_labels}
+
+    return accuracies, model_outputs
 
 
 def save_CV_results(accuracies, out_dir, fname):
@@ -125,7 +135,7 @@ def save_CV_results(accuracies, out_dir, fname):
 
 if __name__ == '__main__':
     pbounds = {
-            'C': (log10(1e-8), log10(1e-5)),
+            'C': (log10(1e-8), log10(1e-3)),
             'epsilon': (log10(1e-10), log10(1e-3)),
     } #log uniform distribution
 
@@ -146,15 +156,21 @@ if __name__ == '__main__':
         optimizer.maximize()
         print(f'Completed hyperparam optimisation: {Ab}, {left_out_cluster}')
         
-        best_hyperparams = optimizer.max['params']
-        C = 10 ** best_hyperparams['C']
-        epsilon = 10 ** best_hyperparams['epsilon']
+        best_hyperparams = {}
+        best_hyperparams['C'] = 10 ** optimizer.max['params']['C']
+        best_hyperparams['epsilon'] = 10 ** optimizer.max['params']['epsilon']
 
-        accuracies = fit_best_model(Ab, left_out_cluster, C, epsilon)
+        accuracies, model_outputs = fit_best_model(Ab, 
+                                        left_out_cluster, 
+                                        C = best_hyperparams['C'],
+                                        epsilon = best_hyperparams['epsilon'])
         print(f'Fitted model with best hyperparams: {Ab}, {left_out_cluster}')
 
-        clade_wise_results[left_out_cluster] = {(C, epsilon): accuracies}
+        clade_wise_results[left_out_cluster] = {
+                                            'params': best_hyperparams,
+                                            'accuracies': accuracies,
+                                            'model_outputs': model_outputs}
 
-    out_dir = f'kernel_learning/{Ab}/cluster_wise_cross_validation/SVR_results'
-    fname = 'SVR_CV_results_mean_acc_per_bin.pkl'
-    save_CV_results(clade_wise_results, out_dir, fname)
+        out_dir = f'kernel_learning/{Ab}/cluster_wise_cross_validation/SVR_results'
+        fname = 'SVR_CV_results_mean_acc_per_bin.pkl'
+        save_CV_results(clade_wise_results, out_dir, fname)

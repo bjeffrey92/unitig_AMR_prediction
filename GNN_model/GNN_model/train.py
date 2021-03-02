@@ -100,7 +100,7 @@ def train(data, model, optimizer, epoch, loss_function, accuracy,
     output = epoch_(model, data, adj)
     loss_train = loss_function(output, data.labels)
     if l1_alpha is not None: #apply l1 regularisation
-        L1_reg = torch.tensor(0., requires_grad=True)
+        L1_reg = torch.as_tensor(0., requires_grad=True)
         for name, param in model.named_parameters():
             if name.endswith('weight'):
                 L1_reg = L1_reg + torch.norm(param, 1)
@@ -188,24 +188,24 @@ def load_data(data_dir: str, distances: bool, adj: bool,
                             testing_metadata.clusters == left_out_cluster].index #extract data from testing set
 
     training_features = torch.index_select(training_data[0], 0, 
-                                        torch.tensor(training_indices))
+                                        torch.as_tensor(training_indices))
     training_labels = torch.index_select(training_data[1], 0, 
-                                        torch.tensor(training_indices))
+                                        torch.as_tensor(training_indices))
     testing_features = torch.index_select(testing_data[0], 0,
-                                        torch.tensor(testing_indices))
+                                        torch.as_tensor(testing_indices))
     testing_labels = torch.index_select(testing_data[1], 0, 
-                                        torch.tensor(testing_indices))
+                                        torch.as_tensor(testing_indices))
     validation_features = torch.cat([
                             torch.index_select(training_data[0], 0, 
-                                        torch.tensor(validation_indices_1)),
+                                        torch.as_tensor(validation_indices_1)),
                             torch.index_select(testing_data[0], 0, 
-                                        torch.tensor(validation_indices_2))
+                                        torch.as_tensor(validation_indices_2))
                             ])
     validation_labels = torch.cat([
                             torch.index_select(training_data[1], 0, 
-                                        torch.tensor(validation_indices_1)),
+                                        torch.as_tensor(validation_indices_1)),
                             torch.index_select(testing_data[1], 0,
-                                        torch.tensor(validation_indices_2))
+                                        torch.as_tensor(validation_indices_2))
                             ])
 
     assert all([training_features.shape[1] == testing_features.shape[1],

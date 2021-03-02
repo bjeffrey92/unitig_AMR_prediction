@@ -133,8 +133,8 @@ def mean_acc_per_bin(predictions: torch.Tensor, labels: torch.Tensor,
     }) #to allow quick searches across bins
 
     def _get_accuracy(d):
-        acc = accuracy(torch.tensor(d.labels.to_list()), 
-                      torch.tensor(d.predictions.to_list()))   
+        acc = accuracy(torch.as_tensor(d.labels.to_list()), 
+                      torch.as_tensor(d.predictions.to_list()))   
         return acc
     bin_accuracies = df.groupby(df.binned_labels).apply(_get_accuracy)
 
@@ -183,10 +183,10 @@ def add_global_node(adj):
     #new indices 
     i_0 = indices[0].tolist() + global_node + global_node_connections
     i_1 = indices[1].tolist() +  global_node_connections + global_node
-    indices = torch.tensor([i_0, i_1])
+    indices = torch.as_tensor([i_0, i_1])
 
     #values including new node
-    values = torch.cat((values, torch.tensor([1] * shape[0] * 2)))
+    values = torch.cat((values, torch.as_tensor([1] * shape[0] * 2)))
 
     return torch.sparse_coo_tensor(indices, values)
 
@@ -246,12 +246,12 @@ class DataGenerator():
 
     def shuffle_samples(self):
         random.shuffle(self._index)
-        self.labels = torch.tensor(list(
+        self.labels = torch.as_tensor(list(
                         {i:self.labels[i] for i in self._index}.values()))
         self.features = list(
             {i:self.features[i] for i in self._index}.values())
         if self.labels_2 is not None:
-            self.labels_2 = torch.tensor(list(
+            self.labels_2 = torch.as_tensor(list(
                         {i:self.labels_2[i] for i in self._index}.values()))
 
 class MetricAccumulator():

@@ -61,13 +61,13 @@ def fit_model_by_grid_search(training_features, training_labels,
         validation_predictions = reg.predict(validation_features)
 
         training_accuracy = mean_acc_per_bin(
-                                    torch.tensor(training_predictions), 
+                                    torch.as_tensor(training_predictions), 
                                     training_labels)
         testing_accuracy = mean_acc_per_bin(
-                                    torch.tensor(testing_predictions), 
+                                    torch.as_tensor(testing_predictions), 
                                     testing_labels)
         validation_accuracy = mean_acc_per_bin(
-                                        torch.tensor(validation_predictions),
+                                        torch.as_tensor(validation_predictions),
                                         validation_labels)
 
         accuracy_dict[a] = {'training_accuracy': training_accuracy, 
@@ -100,24 +100,24 @@ def leave_one_out_CV(training_data, testing_data,
                             testing_metadata.clusters == left_out_clade].index #extract data from testing set
 
         training_features = torch.index_select(training_data[0], 0, 
-                                            torch.tensor(training_indices))
+                                            torch.as_tensor(training_indices))
         training_labels = torch.index_select(training_data[1], 0, 
-                                            torch.tensor(training_indices))
+                                            torch.as_tensor(training_indices))
         testing_features = torch.index_select(testing_data[0], 0,
-                                            torch.tensor(testing_indices))
+                                            torch.as_tensor(testing_indices))
         testing_labels = torch.index_select(testing_data[1], 0, 
-                                            torch.tensor(testing_indices))
+                                            torch.as_tensor(testing_indices))
         validation_features = torch.cat([
                                 torch.index_select(training_data[0], 0, 
-                                            torch.tensor(validation_indices_1)),
+                                            torch.as_tensor(validation_indices_1)),
                                 torch.index_select(testing_data[0], 0, 
-                                            torch.tensor(validation_indices_2))
+                                            torch.as_tensor(validation_indices_2))
                                 ])
         validation_labels = torch.cat([
                                 torch.index_select(training_data[1], 0, 
-                                            torch.tensor(validation_indices_1)),
+                                            torch.as_tensor(validation_indices_1)),
                                 torch.index_select(testing_data[1], 0,
-                                            torch.tensor(validation_indices_2))
+                                            torch.as_tensor(validation_indices_2))
                                 ])
 
         accuracy_dict = fit_model_by_grid_search(training_features, training_labels, 
