@@ -30,7 +30,6 @@ def convert_to_tensor(matrix, torch_sparse_coo = True):
     
     sparse_tensor = SparseTensor(row = row, col = col, 
                         value = value, sparse_sizes = shape)
-
     if torch_sparse_coo:
         return sparse_tensor.to_torch_sparse_coo_tensor()
     else:
@@ -79,10 +78,10 @@ def create_data(G, out_dir):
     indices = list(range(500))
     random.shuffle(indices)
 
-    training_features = torch.tensor([features[i] for i in indices[:300]])
-    testing_features = torch.tensor([features[i] for i in indices[300:]])
-    training_labels = torch.tensor([labels[i] for i in indices[:300]])
-    testing_labels = torch.tensor([labels[i] for i in indices[300:]])
+    training_features = torch.as_tensor([features[i] for i in indices[:300]])
+    testing_features = torch.as_tensor([features[i] for i in indices[300:]])
+    training_labels = torch.as_tensor([labels[i] for i in indices[:300]])
+    testing_labels = torch.as_tensor([labels[i] for i in indices[300:]])
 
     training_features = training_features.to(torch.float32)
     testing_features = testing_features.to(torch.float32)
