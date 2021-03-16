@@ -109,7 +109,7 @@ class GCNMaxPooling(nn.Module):
         x = F.leaky_relu(self.linear2(x))
         if self.linear3 is not None:
             F.dropout(x, self.dropout, inplace = True, training = True)
-            x = F.leaky_relu(self.linear3(x))
+            x = self.linear3(x)
 
         return x[0][0]
 
@@ -128,18 +128,27 @@ class GCNPerNode(nn.Module):
             self.linear2 = nn.Linear(n_hid_2, out_dim)
             self.linear3 = None
         self.dropout = dropout
+        self._initialise_weights()
+
+    def _initialise_weights(self):
+        for name, param in self.named_parameters():
+            if name.endswith('weight'): #if weight
+                nn.init.xavier_uniform_(param)
 
     def forward(self, x, adj):
-        x = F.leaky_relu(self.gc(x, adj))
-        # F.dropout(x, self.dropout, inplace = True, training = True)
-        x = F.leaky_relu(self.linear1(x))
+        x = self.gc(x, adj)
+        x = torch.tanh(x).clone()
+        F.dropout(x, self.dropout, inplace = True, training = True)
+        x = self.linear1(x)
+        x = torch.tanh(x).clone()
         F.dropout(x, self.dropout, inplace = True, training = True)
         if self.linear3 is not None:
-            x = F.leaky_relu(self.linear2(x))
+            x = self.linear2(x)
+            x = torch.tanh(x).clone()
             F.dropout(x, self.dropout, inplace = True, training = True)
-            out = F.leaky_relu(self.linear3(x)[0][0])
+            out = self.linear3(x)[0][0]
         else:
-            out = F.leaky_relu(self.linear2(x)[0][0])
+            out = self.linear2(x)[0][0]
         return out
 
 
