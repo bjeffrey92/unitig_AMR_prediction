@@ -1,0 +1,9 @@
+*png
+*results
+*Results
+*.egg-info
+*__pycache__
+*data
+env/
+.vscode/
+.mypy_cache/
