@@ -11,7 +11,7 @@ from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import mean_squared_error
 from bayes_opt import BayesianOptimization
 
-from lasso_model.utils import (
+from linear_model.utils import (
     load_training_data,
     load_testing_data,
     mean_acc_per_bin,
@@ -34,6 +34,8 @@ def train_evaluate(
     l1_ratio,
 ):
 
+    logging.info(f"alpha = {alpha}, l1_ratio = {l1_ratio}")
+
     max_iter = 100000
     fitted = False
     while not fitted:
@@ -54,9 +56,10 @@ def train_evaluate(
                 raise Exception
             elif w and issubclass(w[0].category, ConvergenceWarning):
                 logging.warning(
-                    f"Failed to converge with max_iter = {max_iter}, adding 1000 more"
+                    f"Failed to converge with max_iter = {max_iter}, \
+                adding 100000 more"
                 )
-                max_iter += 1000
+                max_iter += 100000
             else:
                 fitted = True
 
@@ -151,7 +154,7 @@ def leave_one_out_CV(
             ]
         )
 
-        pbounds = {"alpha": (0.2, 1.8), "l1_ratio": (0, 1)}
+        pbounds = {"alpha": (0.1, 1.8), "l1_ratio": (0.05, 0.95)}
 
         partial_fitting_function = partial(
             train_evaluate,
@@ -170,7 +173,8 @@ def leave_one_out_CV(
         optimizer.maximize(n_iter=15)
 
         logging.info(
-            "Optimization complete, extracting metrics for best hyperparameter combination"
+            "Optimization complete, extracting metrics for best hyperparameter \
+        combination"
         )
         results_dict[left_out_clade] = train_evaluate(
             training_features,
@@ -197,13 +201,16 @@ def save_output(results_dict, results_dir, outcome):
 
 
 if __name__ == "__main__":
-    root_dir = "data/model_inputs/freq_5_95/"
+    root_dir = "data/gonno/model_inputs/freq_5_95/"
 
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         logging.info(f"Fitting models with {outcome}")
         data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
-        results_dir = "lasso_model/results/elastic_net_results/gwas_filtered/cluster_wise_CV"
+        results_dir = (
+            "linear_model/results/elastic_net_results/gwas_filtered/"
+            + "cluster_wise_CV"
+        )
 
         training_data = load_training_data(data_dir)
         testing_data = load_testing_data(data_dir)

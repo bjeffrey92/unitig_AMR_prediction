@@ -1,10 +1,16 @@
+import pickle
+import os
+import logging
+import warnings
+from typing import Dict, List
+
 import torch
 import matplotlib.pyplot as plt
-from sklearn.linear_model import Lasso
+from sklearn.linear_model import Lasso, Ridge
 from sklearn.exceptions import ConvergenceWarning
 from numpy import linspace, sort, array_equal
 
-from lasso_model.utils import (
+from linear_model.utils import (
     load_training_data,
     load_testing_data,
     mean_acc_per_bin,
@@ -12,11 +18,6 @@ from lasso_model.utils import (
     load_metadata,
 )
 
-import pickle
-import os
-import logging
-import warnings
-from typing import Dict, List
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -31,6 +32,7 @@ def fit_model_by_grid_search(
     validation_labels,
     alphas: List,
     adj=None,
+    model="lasso",
 ) -> Dict:
     """
     Training and testing data is random split of part of the tree,
@@ -52,7 +54,10 @@ def fit_model_by_grid_search(
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter("always")
 
-                reg = Lasso(alpha=a, random_state=0, max_iter=max_iter)
+                if model == "lasso":
+                    reg = Lasso(alpha=a, random_state=0, max_iter=max_iter)
+                elif model == "ridge":
+                    reg = Ridge(alpha=a, random_state=0, max_iter=max_iter)
                 reg.fit(training_features, training_labels)
 
                 if len(w) > 1:
@@ -205,7 +210,10 @@ if __name__ == "__main__":
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
-        results_dir = "lasso_model/results/linear_model_results/gwas_filtered/cluster_wise_CV"
+        results_dir = (
+            "linear_model/results/linear_model_results/"
+            + "gwas_filtered/cluster_wise_CV"
+        )
 
         training_data = load_training_data(data_dir)
         testing_data = load_testing_data(data_dir)
