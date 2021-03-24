@@ -2,7 +2,7 @@ import pickle
 import os
 import logging
 import warnings
-from typing import Dict, List
+from typing import List
 
 import torch
 import matplotlib.pyplot as plt
@@ -14,8 +14,10 @@ from linear_model.utils import (
     load_training_data,
     load_testing_data,
     mean_acc_per_bin,
+    train_test_validate_split,
     convolve,
     load_metadata,
+    ResultsContainer,
 )
 
 
@@ -33,13 +35,13 @@ def fit_model_by_grid_search(
     alphas: List,
     adj=None,
     model="lasso",
-) -> Dict:
+) -> List[ResultsContainer]:
     """
     Training and testing data is random split of part of the tree,
     validation data is from a separate clade
     """
 
-    accuracy_dict = {i: None for i in alphas}
+    accuracies = []
 
     if adj is not None:
         training_features = convolve(training_features, adj)
@@ -66,7 +68,8 @@ def fit_model_by_grid_search(
                     raise Exception
                 elif w and issubclass(w[0].category, ConvergenceWarning):
                     logging.warning(
-                        f"Failed to converge with max_iter = {max_iter}, adding 1000 more"
+                        f"Failed to converge with max_iter = {max_iter},"
+                        + " adding 1000 more"
                     )
                     max_iter += 1000
                 else:
@@ -88,17 +91,29 @@ def fit_model_by_grid_search(
             torch.as_tensor(validation_predictions), validation_labels
         )
 
-        accuracy_dict[a] = {
-            "training_accuracy": training_accuracy,
-            "testing_accuracy": testing_accuracy,
-            "validation_accuracy": validation_accuracy,
-        }
+        accuracies.append(
+            ResultsContainer(
+                training_accuracy=training_accuracy,
+                testing_accuracy=testing_accuracy,
+                validation_accuracy=validation_accuracy,
+                training_predictions=training_predictions,
+                testing_predictions=testing_predictions,
+                validation_predictions=validation_predictions,
+                hyperparameters={"alpha": a},
+                model_type=model,
+                model=reg,
+            )
+        )
 
-    return accuracy_dict
+    return accuracies
 
 
 def leave_one_out_CV(
-    training_data, testing_data, training_metadata, testing_metadata
+    training_data,
+    testing_data,
+    training_metadata,
+    testing_metadata,
+    model="lasso",
 ):
 
     clades = sort(training_metadata.clusters.unique())
@@ -113,68 +128,29 @@ def leave_one_out_CV(
         logging.info(
             f"Formatting data for model with clade {left_out_clade} left out"
         )
-        training_indices = training_metadata.loc[
-            training_metadata.clusters != left_out_clade
-        ].index
-        testing_indices = testing_metadata.loc[
-            testing_metadata.clusters != left_out_clade
-        ].index
-        validation_indices_1 = training_metadata.loc[
-            training_metadata.clusters == left_out_clade
-        ].index  # extract data from training set
-        validation_indices_2 = testing_metadata.loc[
-            testing_metadata.clusters == left_out_clade
-        ].index  # extract data from testing set
 
-        training_features = torch.index_select(
-            training_data[0], 0, torch.as_tensor(training_indices)
-        )
-        training_labels = torch.index_select(
-            training_data[1], 0, torch.as_tensor(training_indices)
-        )
-        testing_features = torch.index_select(
-            testing_data[0], 0, torch.as_tensor(testing_indices)
-        )
-        testing_labels = torch.index_select(
-            testing_data[1], 0, torch.as_tensor(testing_indices)
-        )
-        validation_features = torch.cat(
-            [
-                torch.index_select(
-                    training_data[0], 0, torch.as_tensor(validation_indices_1)
-                ),
-                torch.index_select(
-                    testing_data[0], 0, torch.as_tensor(validation_indices_2)
-                ),
-            ]
-        )
-        validation_labels = torch.cat(
-            [
-                torch.index_select(
-                    training_data[1], 0, torch.as_tensor(validation_indices_1)
-                ),
-                torch.index_select(
-                    testing_data[1], 0, torch.as_tensor(validation_indices_2)
-                ),
-            ]
+        input_data = train_test_validate_split(
+            training_data,
+            testing_data,
+            training_metadata,
+            testing_metadata,
+            left_out_clade,
         )
 
         accuracy_dict = fit_model_by_grid_search(
-            training_features,
-            training_labels,
-            testing_features,
-            testing_labels,
-            validation_features,
-            validation_labels,
+            *input_data,
             alphas,
+            model=model,
         )
         results_dict[left_out_clade] = accuracy_dict
 
     return results_dict
 
 
-def save_output(accuracy_dict, fname):
-    with open(fname, "wb") as a:
+def save_output(accuracy_dict, results_dir, fname):
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    with open(os.path.join(results_dir, fname), "wb") as a:
         pickle.dump(accuracy_dict, a)
 
 
@@ -205,13 +181,14 @@ def plot_results(accuracy_dict, fname):
 
 
 if __name__ == "__main__":
-    root_dir = "data/model_inputs/freq_5_95/"
+    root_dir = "data/gonno/model_inputs/freq_5_95/"
+    model = "lasso"
 
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
         results_dir = (
-            "linear_model/results/linear_model_results/"
+            f"linear_model/results/{model}_results/"
             + "gwas_filtered/cluster_wise_CV"
         )
 
@@ -220,13 +197,15 @@ if __name__ == "__main__":
         training_metadata, testing_metadata = load_metadata(data_dir)
 
         results_dict = leave_one_out_CV(
-            training_data, testing_data, training_metadata, testing_metadata
+            training_data,
+            testing_data,
+            training_metadata,
+            testing_metadata,
+            model=model,
         )
 
-        fname = os.path.join(
-            results_dir, outcome + "_CV_lasso_predictions.pkl"
-        )
-        save_output(results_dict, fname)
+        fname = outcome + f"_CV_{model}_predictions.pkl"
+        save_output(results_dict, results_dir, fname)
 
         # for left_out_clade in results_dict.keys():
         #     fname = os.path.join(results_dir,

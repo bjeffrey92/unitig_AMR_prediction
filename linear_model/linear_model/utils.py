@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 from dataclasses import dataclass
 import nptyping
-from typing import Dict
+from typing import Dict, Any
 
 import torch
 import pandas as pd
@@ -34,12 +34,75 @@ def load_metadata(data_dir):
     return training_metadata, testing_metadata
 
 
+def train_test_validate_split(
+    training_data,
+    testing_data,
+    training_metadata,
+    testing_metadata,
+    left_out_clade,
+):
+    training_indices = training_metadata.loc[
+        training_metadata.clusters != left_out_clade
+    ].index
+    testing_indices = testing_metadata.loc[
+        testing_metadata.clusters != left_out_clade
+    ].index
+    validation_indices_1 = training_metadata.loc[
+        training_metadata.clusters == left_out_clade
+    ].index  # extract data from training set
+    validation_indices_2 = testing_metadata.loc[
+        testing_metadata.clusters == left_out_clade
+    ].index  # extract data from testing set
+
+    training_features = torch.index_select(
+        training_data[0], 0, torch.as_tensor(training_indices)
+    )
+    training_labels = torch.index_select(
+        training_data[1], 0, torch.as_tensor(training_indices)
+    )
+    testing_features = torch.index_select(
+        testing_data[0], 0, torch.as_tensor(testing_indices)
+    )
+    testing_labels = torch.index_select(
+        testing_data[1], 0, torch.as_tensor(testing_indices)
+    )
+    validation_features = torch.cat(
+        [
+            torch.index_select(
+                training_data[0], 0, torch.as_tensor(validation_indices_1)
+            ),
+            torch.index_select(
+                testing_data[0], 0, torch.as_tensor(validation_indices_2)
+            ),
+        ]
+    )
+    validation_labels = torch.cat(
+        [
+            torch.index_select(
+                training_data[1], 0, torch.as_tensor(validation_indices_1)
+            ),
+            torch.index_select(
+                testing_data[1], 0, torch.as_tensor(validation_indices_2)
+            ),
+        ]
+    )
+
+    return (
+        training_features,
+        training_labels,
+        testing_features,
+        testing_labels,
+        validation_features,
+        validation_labels,
+    )
+
+
 def accuracy(predictions: torch.Tensor, labels: torch.Tensor):
     """
     Prediction accuracy defined as percentage of predictions within 1 twofold
     dilution of true value
     """
-    diff = predictions - labels
+    diff = abs(predictions - labels)
     correct = diff[[i < 1 for i in diff]]
     return len(correct) / len(predictions) * 100
 
@@ -84,8 +147,8 @@ def mean_acc_per_bin(
     # percentage accuracy per bin
     def _get_accuracy(d):
         acc = accuracy(
-            torch.tensor(d.labels.to_list()),
-            torch.tensor(d.predictions.to_list()),
+            torch.as_tensor(d.labels.to_list()),
+            torch.as_tensor(d.predictions.to_list()),
         )
         return acc
 
@@ -118,10 +181,12 @@ class ResultsContainer:
     testing_accuracy: float
     validation_accuracy: float
 
-    training_predictions: nptyping.NDArray[1, nptyping.Float]
-    testing_predictions: nptyping.NDArray[1, nptyping.Float]
-    validation_predictions: nptyping.NDArray[1, nptyping.Float]
+    training_predictions: nptyping.NDArray[nptyping.Float]
+    testing_predictions: nptyping.NDArray[nptyping.Float]
+    validation_predictions: nptyping.NDArray[nptyping.Float]
 
     hyperparameters: Dict[str, float]
 
-    model: str
+    model_type: str
+
+    model: Any

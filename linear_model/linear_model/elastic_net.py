@@ -14,8 +14,10 @@ from bayes_opt import BayesianOptimization
 from linear_model.utils import (
     load_training_data,
     load_testing_data,
+    train_test_validate_split,
     mean_acc_per_bin,
     load_metadata,
+    ResultsContainer,
 )
 
 
@@ -84,14 +86,27 @@ def train_evaluate(
             torch.as_tensor(validation_predictions), validation_labels
         )
 
-        accuracy_dict = {
-            "training_accuracy": training_accuracy,
-            "testing_accuracy": testing_accuracy,
-            "validation_accuracy": validation_accuracy,
-        }
-        logging.info(accuracy_dict)
+        logging.info(
+            {
+                "training_accuracy": training_accuracy,
+                "testing_accuracy": testing_accuracy,
+                "validation_accuracy": validation_accuracy,
+            }
+        )
 
-        return accuracy_dict
+        results = ResultsContainer(
+            training_accuracy=training_accuracy,
+            testing_accuracy=testing_accuracy,
+            validation_accuracy=validation_accuracy,
+            training_predictions=training_predictions,
+            testing_predictions=testing_predictions,
+            validation_predictions=validation_predictions,
+            hyperparameters={"alpha": alpha, "l1_ratio": l1_ratio},
+            model_type="elastic_net",
+            model=reg,
+        )
+
+        return results
 
 
 def leave_one_out_CV(
@@ -108,53 +123,22 @@ def leave_one_out_CV(
         logging.info(
             f"Formatting data for model with clade {left_out_clade} left out"
         )
-        training_indices = training_metadata.loc[
-            training_metadata.clusters != left_out_clade
-        ].index
-        testing_indices = testing_metadata.loc[
-            testing_metadata.clusters != left_out_clade
-        ].index
-        validation_indices_1 = training_metadata.loc[
-            training_metadata.clusters == left_out_clade
-        ].index  # extract data from training set
-        validation_indices_2 = testing_metadata.loc[
-            testing_metadata.clusters == left_out_clade
-        ].index  # extract data from testing set
-
-        training_features = torch.index_select(
-            training_data[0], 0, torch.as_tensor(training_indices)
-        )
-        training_labels = torch.index_select(
-            training_data[1], 0, torch.as_tensor(training_indices)
-        )
-        testing_features = torch.index_select(
-            testing_data[0], 0, torch.as_tensor(testing_indices)
-        )
-        testing_labels = torch.index_select(
-            testing_data[1], 0, torch.as_tensor(testing_indices)
-        )
-        validation_features = torch.cat(
-            [
-                torch.index_select(
-                    training_data[0], 0, torch.as_tensor(validation_indices_1)
-                ),
-                torch.index_select(
-                    testing_data[0], 0, torch.as_tensor(validation_indices_2)
-                ),
-            ]
-        )
-        validation_labels = torch.cat(
-            [
-                torch.index_select(
-                    training_data[1], 0, torch.as_tensor(validation_indices_1)
-                ),
-                torch.index_select(
-                    testing_data[1], 0, torch.as_tensor(validation_indices_2)
-                ),
-            ]
+        input_data = train_test_validate_split(
+            training_data,
+            testing_data,
+            training_metadata,
+            testing_metadata,
+            left_out_clade,
         )
 
-        pbounds = {"alpha": (0.1, 1.8), "l1_ratio": (0.05, 0.95)}
+        (
+            training_features,
+            training_labels,
+            testing_features,
+            testing_labels,
+        ) = input_data[:4]
+
+        pbounds = {"alpha": (0.01, 0.1), "l1_ratio": (0.05, 0.95)}
 
         partial_fitting_function = partial(
             train_evaluate,
@@ -170,19 +154,14 @@ def leave_one_out_CV(
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer.maximize(n_iter=15)
+        optimizer.maximize(n_iter=10)
 
         logging.info(
             "Optimization complete, extracting metrics for best hyperparameter \
         combination"
         )
         results_dict[left_out_clade] = train_evaluate(
-            training_features,
-            training_labels,
-            testing_features,
-            testing_labels,
-            validation_features,
-            validation_labels,
+            *input_data,
             optimizer.max["params"]["alpha"],
             optimizer.max["params"]["l1_ratio"],
         )
