@@ -4,10 +4,10 @@ import logging
 import warnings
 from typing import List
 
-import torch
 import matplotlib.pyplot as plt
 from sklearn.linear_model import Lasso, Ridge
 from sklearn.exceptions import ConvergenceWarning
+from sklearn.metrics import mean_squared_error
 from numpy import linspace, sort, array_equal
 
 from linear_model.utils import (
@@ -23,6 +23,38 @@ from linear_model.utils import (
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
+
+
+def fit_model(training_features, training_labels, model, alpha):
+
+    logging.info(f"Fitting model for alpha = {alpha}")
+
+    max_iter = 1000
+    fitted = False
+    while not fitted:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            if model == "lasso":
+                reg = Lasso(alpha=alpha, random_state=0, max_iter=max_iter)
+            elif model == "ridge":
+                reg = Ridge(alpha=alpha, random_state=0, max_iter=max_iter)
+            reg.fit(training_features, training_labels)
+
+            if len(w) > 1:
+                for warning in w:
+                    logging.error(warning.category)
+                raise Exception
+            elif w and issubclass(w[0].category, ConvergenceWarning):
+                logging.warning(
+                    f"Failed to converge with max_iter = {max_iter},"
+                    + " adding 1000 more"
+                )
+                max_iter += 1000
+            else:
+                fitted = True
+
+    return reg
 
 
 def fit_model_by_grid_search(
@@ -48,32 +80,8 @@ def fit_model_by_grid_search(
         testing_features = convolve(testing_features, adj)
 
     for a in alphas:
-        logging.info(f"Fitting model for alpha = {a}")
 
-        max_iter = 1000
-        fitted = False
-        while not fitted:
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always")
-
-                if model == "lasso":
-                    reg = Lasso(alpha=a, random_state=0, max_iter=max_iter)
-                elif model == "ridge":
-                    reg = Ridge(alpha=a, random_state=0, max_iter=max_iter)
-                reg.fit(training_features, training_labels)
-
-                if len(w) > 1:
-                    for warning in w:
-                        logging.error(warning.category)
-                    raise Exception
-                elif w and issubclass(w[0].category, ConvergenceWarning):
-                    logging.warning(
-                        f"Failed to converge with max_iter = {max_iter},"
-                        + " adding 1000 more"
-                    )
-                    max_iter += 1000
-                else:
-                    fitted = True
+        reg = fit_model(training_features, training_labels, model, a)
 
         logging.info(f"alpha = {a} model fitted, generating predictions")
 
@@ -82,13 +90,13 @@ def fit_model_by_grid_search(
         validation_predictions = reg.predict(validation_features)
 
         training_accuracy = mean_acc_per_bin(
-            torch.as_tensor(training_predictions), training_labels
+            training_predictions, training_labels
         )
         testing_accuracy = mean_acc_per_bin(
-            torch.as_tensor(testing_predictions), testing_labels
+            testing_predictions, testing_labels
         )
         validation_accuracy = mean_acc_per_bin(
-            torch.as_tensor(validation_predictions), validation_labels
+            validation_predictions, validation_labels
         )
 
         accuracies.append(
@@ -96,6 +104,15 @@ def fit_model_by_grid_search(
                 training_accuracy=training_accuracy,
                 testing_accuracy=testing_accuracy,
                 validation_accuracy=validation_accuracy,
+                training_MSE=mean_squared_error(
+                    training_labels, training_predictions
+                ),
+                testing_MSE=mean_squared_error(
+                    testing_labels, testing_predictions
+                ),
+                validation_MSE=mean_squared_error(
+                    validation_labels, validation_predictions
+                ),
                 training_predictions=training_predictions,
                 testing_predictions=testing_predictions,
                 validation_predictions=validation_predictions,
@@ -121,7 +138,7 @@ def leave_one_out_CV(
         sort(clades), sort(testing_metadata.clusters.unique())
     ), "Different clades found in training and testing metadata"
 
-    alphas = linspace(0.01, 0.1, 5)
+    alphas = linspace(0.01, 0.2, 10)
 
     results_dict = {}
     for left_out_clade in clades:

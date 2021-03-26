@@ -4,7 +4,6 @@ import logging
 import warnings
 from functools import partial
 
-import torch
 from numpy import sort, array_equal
 from sklearn.linear_model import ElasticNet
 from sklearn.exceptions import ConvergenceWarning
@@ -25,19 +24,7 @@ logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
 
-def train_evaluate(
-    training_features,
-    training_labels,
-    testing_features,
-    testing_labels,
-    validation_features,
-    validation_labels,
-    alpha,
-    l1_ratio,
-):
-
-    logging.info(f"alpha = {alpha}, l1_ratio = {l1_ratio}")
-
+def fit_model(training_features, training_labels, alpha, l1_ratio):
     max_iter = 100000
     fitted = False
     while not fitted:
@@ -65,6 +52,24 @@ def train_evaluate(
             else:
                 fitted = True
 
+    return reg
+
+
+def train_evaluate(
+    training_features,
+    training_labels,
+    testing_features,
+    testing_labels,
+    validation_features,
+    validation_labels,
+    alpha,
+    l1_ratio,
+):
+
+    logging.info(f"alpha = {alpha}, l1_ratio = {l1_ratio}")
+
+    reg = fit_model(training_features, training_labels, alpha, l1_ratio)
+
     if validation_features is None:
         testing_predictions = reg.predict(testing_features)
         testing_loss = float(
@@ -77,13 +82,13 @@ def train_evaluate(
         validation_predictions = reg.predict(validation_features)
 
         training_accuracy = mean_acc_per_bin(
-            torch.as_tensor(training_predictions), training_labels
+            training_predictions, training_labels
         )
         testing_accuracy = mean_acc_per_bin(
-            torch.as_tensor(testing_predictions), testing_labels
+            testing_predictions, testing_labels
         )
         validation_accuracy = mean_acc_per_bin(
-            torch.as_tensor(validation_predictions), validation_labels
+            validation_predictions, validation_labels
         )
 
         logging.info(
@@ -98,6 +103,15 @@ def train_evaluate(
             training_accuracy=training_accuracy,
             testing_accuracy=testing_accuracy,
             validation_accuracy=validation_accuracy,
+            training_MSE=mean_squared_error(
+                training_labels, training_predictions
+            ),
+            testing_MSE=mean_squared_error(
+                testing_labels, testing_predictions
+            ),
+            validation_MSE=mean_squared_error(
+                validation_labels, validation_predictions
+            ),
             training_predictions=training_predictions,
             testing_predictions=testing_predictions,
             validation_predictions=validation_predictions,
@@ -138,7 +152,7 @@ def leave_one_out_CV(
             testing_labels,
         ) = input_data[:4]
 
-        pbounds = {"alpha": (0.01, 0.1), "l1_ratio": (0.05, 0.95)}
+        pbounds = {"alpha": (0.01, 0.1), "l1_ratio": (0.3, 0.7)}
 
         partial_fitting_function = partial(
             train_evaluate,

@@ -97,7 +97,10 @@ def train_test_validate_split(
     )
 
 
-def accuracy(predictions: torch.Tensor, labels: torch.Tensor):
+def accuracy(
+    predictions: nptyping.NDArray[nptyping.Float],
+    labels: nptyping.NDArray[nptyping.Float],
+) -> float:
     """
     Prediction accuracy defined as percentage of predictions within 1 twofold
     dilution of true value
@@ -108,7 +111,7 @@ def accuracy(predictions: torch.Tensor, labels: torch.Tensor):
 
 
 def mean_acc_per_bin(
-    predictions: torch.Tensor, labels: torch.Tensor, bin_size="optimise"
+    predictions: nptyping.NDArray[float], labels: nptyping.NDArray[float]
 ) -> float:
     """
     Splits labels into bins of size = bin_size, and calculates the prediction
@@ -117,19 +120,13 @@ def mean_acc_per_bin(
     """
     assert len(predictions) == len(labels)
 
-    if type(bin_size) != int and bin_size != "optimise":
-        raise ValueError("bin_size must = optimise, or be an integer >= 1 ")
-    if type(bin_size) == int and bin_size < 1:
-        raise NotImplementedError("If an integer, bin_size must be >= 1")
-
     # apply Freedman-Diaconis rule to get optimal bin size
     # https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
-    if bin_size == "optimise":
-        IQR = np.subtract(*np.percentile(labels, [75, 25]))
-        bin_size = 2 * IQR / (len(labels) ** (1 / 3))
-        bin_size = int(
-            np.ceil(bin_size)
-        )  # round up cause if less than 1 will not work with accuracy function
+    IQR = np.subtract(*np.percentile(labels, [75, 25]))
+    bin_size = 2 * IQR / (len(labels) ** (1 / 3))
+    bin_size = int(
+        np.ceil(bin_size)
+    )  # round up cause if less than 1 will not work with accuracy function
 
     min_value = int(np.floor(min(labels)))
     max_value = int(np.floor(max(labels)))
@@ -147,8 +144,8 @@ def mean_acc_per_bin(
     # percentage accuracy per bin
     def _get_accuracy(d):
         acc = accuracy(
-            torch.as_tensor(d.labels.to_list()),
-            torch.as_tensor(d.predictions.to_list()),
+            d.labels.to_numpy(),
+            d.predictions.to_numpy(),
         )
         return acc
 
@@ -180,6 +177,10 @@ class ResultsContainer:
     training_accuracy: float
     testing_accuracy: float
     validation_accuracy: float
+
+    training_MSE: float
+    testing_MSE: float
+    validation_MSE: float
 
     training_predictions: nptyping.NDArray[nptyping.Float]
     testing_predictions: nptyping.NDArray[nptyping.Float]
