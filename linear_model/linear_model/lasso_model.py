@@ -13,10 +13,11 @@ from numpy import linspace, sort, array_equal
 from linear_model.utils import (
     load_training_data,
     load_testing_data,
+    load_metadata,
+    load_adjacency_matrix,
     mean_acc_per_bin,
     train_test_validate_split,
     convolve,
-    load_metadata,
     ResultsContainer,
 )
 
@@ -25,7 +26,7 @@ def fit_model(training_features, training_labels, model, alpha):
 
     logging.info(f"Fitting model for alpha = {alpha}")
 
-    max_iter = 1000
+    max_iter = 100000
     fitted = False
     while not fitted:
         with warnings.catch_warnings(record=True) as w:
@@ -46,9 +47,9 @@ def fit_model(training_features, training_labels, model, alpha):
             elif w and issubclass(w[0].category, ConvergenceWarning):
                 logging.warning(
                     f"Failed to converge with max_iter = {max_iter},"
-                    + " adding 1000 more"
+                    + " adding 100000 more"
                 )
-                max_iter += 1000
+                max_iter += 100000
             else:
                 fitted = True
 
@@ -129,6 +130,7 @@ def leave_one_out_CV(
     training_metadata,
     testing_metadata,
     model="lasso",
+    adj=None,
 ):
 
     clades = sort(training_metadata.clusters.unique())
@@ -156,6 +158,7 @@ def leave_one_out_CV(
             *input_data,
             alphas,
             model=model,
+            adj=adj,
         )
         results_dict[left_out_clade] = accuracy_dict
 
@@ -195,38 +198,49 @@ def plot_results(accuracy_dict, fname):
     plt.savefig(fname)
 
 
-if __name__ == "__main__":
-    logging.basicConfig()
-    logging.root.setLevel(logging.INFO)
-
+def main(convolve=False):
     root_dir = "data/gonno/model_inputs/freq_5_95/"
-    model = "lasso"
 
-    outcomes = os.listdir(root_dir)
-    for outcome in outcomes:
-        data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
-        results_dir = (
-            f"linear_model/results/{model}_results/"
-            + "gwas_filtered/cluster_wise_CV"
-        )
+    for model in ["lasso", "ridge"]:
+        outcomes = os.listdir(root_dir)
+        for outcome in outcomes:
+            data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
+            results_dir = (
+                f"linear_model/results/{model}_results/"
+                + "gwas_filtered/cluster_wise_CV"
+            )
+            if convolve:
+                results_dir = os.path.join(results_dir, "convolved")
 
-        training_data = load_training_data(data_dir)
-        testing_data = load_testing_data(data_dir)
-        training_metadata, testing_metadata = load_metadata(data_dir)
+            training_data = load_training_data(data_dir)
+            testing_data = load_testing_data(data_dir)
+            training_metadata, testing_metadata = load_metadata(data_dir)
+            if convolve:
+                adj = load_adjacency_matrix(data_dir)
+            else:
+                adj = None
 
-        results_dict = leave_one_out_CV(
-            training_data,
-            testing_data,
-            training_metadata,
-            testing_metadata,
-            model=model,
-        )
+            results_dict = leave_one_out_CV(
+                training_data,
+                testing_data,
+                training_metadata,
+                testing_metadata,
+                model=model,
+                adj=adj,
+            )
 
-        fname = outcome + f"_CV_{model}_predictions.pkl"
-        save_output(results_dict, results_dir, fname)
+            fname = outcome + f"_CV_{model}_predictions.pkl"
+            save_output(results_dict, results_dir, fname)
 
         # for left_out_clade in results_dict.keys():
         #     fname = os.path.join(results_dir,
         #         outcome + \
         #         f'_validation_cluster_{left_out_clade}_lasso_predictions.png')
         #     plot_results(results_dict[left_out_clade], fname)
+
+
+if __name__ == "__main__":
+    logging.basicConfig()
+    logging.root.setLevel(logging.INFO)
+
+    main()

@@ -13,10 +13,12 @@ from bayes_opt import BayesianOptimization
 from linear_model.utils import (
     load_training_data,
     load_testing_data,
+    load_metadata,
+    load_adjacency_matrix,
     train_test_validate_split,
     mean_acc_per_bin,
-    load_metadata,
     ResultsContainer,
+    convolve,
 )
 
 
@@ -58,11 +60,18 @@ def train_evaluate(
     testing_labels,
     validation_features,
     validation_labels,
+    adj,
     alpha,
     l1_ratio,
 ):
 
     logging.info(f"alpha = {alpha}, l1_ratio = {l1_ratio}")
+
+    if adj is not None:
+        training_features = convolve(training_features, adj)
+        testing_features = convolve(testing_features, adj)
+        if validation_features is not None:
+            validation_features = convolve(validation_features, adj)
 
     reg = fit_model(training_features, training_labels, alpha, l1_ratio)
 
@@ -120,7 +129,7 @@ def train_evaluate(
 
 
 def leave_one_out_CV(
-    training_data, testing_data, training_metadata, testing_metadata
+    training_data, testing_data, training_metadata, testing_metadata, adj=None
 ):
 
     clades = sort(training_metadata.clusters.unique())
@@ -158,6 +167,7 @@ def leave_one_out_CV(
             testing_labels=testing_labels,
             validation_features=None,
             validation_labels=None,
+            adj=adj,
         )
 
         logging.info("Optimizing hyperparameters")
@@ -172,6 +182,7 @@ def leave_one_out_CV(
         )
         results_dict[left_out_clade] = train_evaluate(
             *input_data,
+            adj,
             optimizer.max["params"]["alpha"],
             optimizer.max["params"]["l1_ratio"],
         )
@@ -189,10 +200,7 @@ def save_output(results_dict, results_dir, outcome):
         pickle.dump(results_dict, a)
 
 
-if __name__ == "__main__":
-    logging.basicConfig()
-    logging.root.setLevel(logging.INFO)
-
+def main(convolve=False):
     root_dir = "data/gonno/model_inputs/freq_5_95/"
 
     outcomes = os.listdir(root_dir)
@@ -203,13 +211,30 @@ if __name__ == "__main__":
             "linear_model/results/elastic_net_results/gwas_filtered/"
             + "cluster_wise_CV"
         )
+        if convolve:
+            results_dir = os.path.join(results_dir, "convolved")
 
         training_data = load_training_data(data_dir)
         testing_data = load_testing_data(data_dir)
         training_metadata, testing_metadata = load_metadata(data_dir)
+        if convolve:
+            adj = load_adjacency_matrix(data_dir)
+        else:
+            adj = None
 
         results_dict = leave_one_out_CV(
-            training_data, testing_data, training_metadata, testing_metadata
+            training_data,
+            testing_data,
+            training_metadata,
+            testing_metadata,
+            adj=adj,
         )
 
         save_output(results_dict, results_dir, outcome)
+
+
+if __name__ == "__main__":
+    logging.basicConfig()
+    logging.root.setLevel(logging.INFO)
+
+    main()
