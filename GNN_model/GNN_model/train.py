@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import argparse
-
 import time
 import logging
 import math
@@ -11,7 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 from GNN_model import utils
-from GNN_model.models import GraphConnectionsNN, GCNPerNode
+from GNN_model.models import GCNPerNode
 
 
 logging.basicConfig()
@@ -54,10 +52,12 @@ def batch_train(
     final_batch = False
     for batch in range(batches):
         if final_batch:
-            break  # last batch will be empty if batch_size is not a multiple of n samples
+            break
+        # last batch will be empty if batch_size is not a multiple of n samples
 
         # add remainder, to what would be second from last batch
-        # better to have one slightly larger batch at the end than one very small one
+        # better to have one slightly larger batch at the end than one
+        # very small one
         if batch == batches - 1:
             batch_size += data.n_samples % batch_size
             final_batch = True
@@ -122,7 +122,8 @@ def train(
     output = epoch_(model, data, adj)
     loss_train = loss_function(output, data.labels)
     if l1_alpha is not None:  # apply l1 regularisation
-        L1_reg = torch.as_tensor(0.0, requires_grad=True)
+        # pylint: disable=not-callable
+        L1_reg = torch.tensor(0.0, requires_grad=True)
         for name, param in model.named_parameters():
             if name.endswith("weight"):
                 L1_reg = L1_reg + torch.norm(param, 1)
@@ -351,7 +352,7 @@ def main(args):
                 and epoch > 50
             ):
                 logging.info(
-                    "Gradient of testing data accuracy appears to have plateaued, terminating early"
+                    "Gradient of testing data accuracy appears to have plateaued, terminating early"  # noqa: E501
                 )
                 break
 
