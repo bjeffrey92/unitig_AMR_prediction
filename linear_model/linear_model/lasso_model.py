@@ -21,10 +21,6 @@ from linear_model.utils import (
 )
 
 
-logging.basicConfig()
-logging.root.setLevel(logging.INFO)
-
-
 def fit_model(training_features, training_labels, model, alpha):
 
     logging.info(f"Fitting model for alpha = {alpha}")
@@ -39,6 +35,8 @@ def fit_model(training_features, training_labels, model, alpha):
                 reg = Lasso(alpha=alpha, random_state=0, max_iter=max_iter)
             elif model == "ridge":
                 reg = Ridge(alpha=alpha, random_state=0, max_iter=max_iter)
+            else:
+                raise NotImplementedError(model)
             reg.fit(training_features, training_labels)
 
             if len(w) > 1:
@@ -198,6 +196,9 @@ def plot_results(accuracy_dict, fname):
 
 
 if __name__ == "__main__":
+    logging.basicConfig()
+    logging.root.setLevel(logging.INFO)
+
     root_dir = "data/gonno/model_inputs/freq_5_95/"
     model = "lasso"
 

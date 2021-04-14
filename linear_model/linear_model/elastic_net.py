@@ -20,10 +20,6 @@ from linear_model.utils import (
 )
 
 
-logging.basicConfig()
-logging.root.setLevel(logging.INFO)
-
-
 def fit_model(training_features, training_labels, alpha, l1_ratio):
     max_iter = 100000
     fitted = False
@@ -194,6 +190,9 @@ def save_output(results_dict, results_dir, outcome):
 
 
 if __name__ == "__main__":
+    logging.basicConfig()
+    logging.root.setLevel(logging.INFO)
+
     root_dir = "data/gonno/model_inputs/freq_5_95/"
 
     outcomes = os.listdir(root_dir)
