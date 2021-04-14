@@ -8,7 +8,8 @@ from typing import Dict, Union
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
-from sklearn.linear_model import Lasso, Ridge
+from sklearn.linear_model import Lasso, Ridge, ElasticNet
+from numpy import corrcoef
 
 from linear_model.utils import (
     ResultsContainer,
@@ -61,13 +62,16 @@ def plot_best_fits(
         testing_accuracy = []
         validation_accuracy = []
         for clade, clade_data in Ab_data.items():
-            best_model_results = next(
-                filter(
-                    lambda x: x.hyperparameters
-                    == optimal_hyperparams[Ab][clade],
-                    clade_data,
+            if isinstance(clade_data, ResultsContainer):
+                best_model_results = clade_data
+            else:
+                best_model_results = next(
+                    filter(
+                        lambda x: x.hyperparameters
+                        == optimal_hyperparams[Ab][clade],
+                        clade_data,
+                    )
                 )
-            )
             training_accuracy.append(best_model_results.training_accuracy)
             testing_accuracy.append(best_model_results.testing_accuracy)
             validation_accuracy.append(best_model_results.validation_accuracy)
@@ -137,32 +141,94 @@ def fit_Ab_models(
     return models
 
 
-# def evaluate_models(
-#     Ab: str, models_dict: Dict[int, Union[Lasso, Ridge]], data_dir: str
-# ):
-#     adj = load_adjacency_matrix(data_dir)
+def evaluate_models(
+    Ab: str,
+    models_dict: Dict[int, Union[Lasso, Ridge, ElasticNet]],
+    data_dir: str,
+    results_dir: str,
+):
+    adj = load_adjacency_matrix(data_dir)
+    indices = pd.DataFrame(
+        adj.indices().transpose(0, 1).tolist()
+    )  # parse edges as dataframe for quick searching
+    indices = indices.loc[indices[0] != indices[1]]  # remove self loops
+
+    corr_coefs = {}
+    fig, axs = plt.subplots(4, 3, sharex=True, sharey=True)
+    n = 0
+    m = 0
+    for clade, model in models_dict.items():
+        x_list = []
+        y_list = []
+        if isinstance(model, ResultsContainer):
+            model = model.model
+        for i in range(model.coef_.shape[0]):
+            y_ix = indices.loc[indices[0] == i][1]  # get neighbours of i
+            y_list += model.coef_[y_ix].tolist()
+            x_list += [model.coef_[i].tolist()] * len(y_ix)
+
+        axs[n, m].scatter(x_list, y_list, s=1)
+        axs[n, m].set_title(clade)
+        if n > 0 and n % 3 == 0:
+            n = 0
+            m += 1
+        else:
+            n += 1
+
+        corr_coefs[clade] = corrcoef(x_list, y_list)[
+            0, 1
+        ]  # pearson correlation coefficient
+
+    fig.tight_layout()
+    fig.savefig(
+        os.path.join(
+            results_dir, f"{Ab}_neighbouring_nodes_model_coefficients.png"
+        )
+    )
+    with open(
+        os.path.join(
+            results_dir,
+            f"{Ab}_neighbouring_nodes_model_coefficients_pearson_coef.pkl",
+        ),
+        "wb",
+    ) as a:
+        pickle.dump(corr_coefs, a)
 
 
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    model_type = "ridge"
-    results_dir = f"linear_model/results/{model_type}_results/gwas_filtered/cluster_wise_CV"  # noqa: E501
+    for model_type in ["ridge", "lasso", "elastic_net"]:
+        results_dir = f"linear_model/results/{model_type}_results/gwas_filtered/cluster_wise_CV"  # noqa: E501
+        root_dir = "data/gonno/model_inputs/freq_5_95/"  # to access raw data
 
-    results = get_results(results_dir)
-    optimal_hyperparams = {
-        Ab: extract_optimal_hyperparams(Ab_results)
-        for Ab, Ab_results in results.items()
-    }
+        results = get_results(results_dir)
 
-    plot_best_fits(results, optimal_hyperparams)
+        if model_type == "elastic_net":  # hps optimised with bayes_opt
+            for Ab, models_dict in results.items():
+                data_dir = os.path.join(
+                    root_dir, f"log2_{Ab}_mic", "gwas_filtered"
+                )
+                evaluate_models(Ab, models_dict, data_dir, results_dir)
 
-    ab_best_models = {}
-    for Ab, Ab_hps in optimal_hyperparams.items():
-        root_dir = "data/gonno/model_inputs/freq_5_95/"
-        data_dir = os.path.join(root_dir, f"log2_{Ab}_mic", "gwas_filtered")
+        else:  # others did grid search over alpha
+            optimal_hyperparams = {
+                Ab: extract_optimal_hyperparams(Ab_results)
+                for Ab, Ab_results in results.items()
+            }
 
-        ab_best_models[Ab] = fit_Ab_models(Ab, Ab_hps, model_type, data_dir)
+            plot_best_fits(
+                results,
+                optimal_hyperparams,
+                os.path.join(results_dir, "best_model_accuracies.png"),
+            )
 
-        # evaluate_models(Ab, models_dict, data_dir)
+            for Ab, Ab_hps in optimal_hyperparams.items():
+                data_dir = os.path.join(
+                    root_dir, f"log2_{Ab}_mic", "gwas_filtered"
+                )
+
+                models_dict = fit_Ab_models(Ab, Ab_hps, model_type, data_dir)
+
+                evaluate_models(Ab, models_dict, data_dir, results_dir)

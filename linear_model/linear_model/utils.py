@@ -163,6 +163,7 @@ def load_adjacency_matrix(data_dir, degree_normalised=False):
         )
     else:
         adj = torch.load(os.path.join(data_dir, "unitig_adjacency_tensor.pt"))
+    adj = adj.coalesce()
     return adj
 
 
