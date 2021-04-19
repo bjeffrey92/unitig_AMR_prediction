@@ -48,7 +48,9 @@ def extract_optimal_hyperparams(ab_results: Dict) -> Dict:
 
 
 def plot_best_fits(
-    results: Dict, optimal_hyperparams: Dict, filename: str = None
+    results: Dict,
+    optimal_hyperparams: Dict = None,
+    filename: str = None,
 ):
     """
     results and optimal hyperparameters are nested dictionaries containing the
@@ -62,15 +64,22 @@ def plot_best_fits(
         testing_accuracy = []
         validation_accuracy = []
         for clade, clade_data in Ab_data.items():
-            if isinstance(clade_data, ResultsContainer):
+            if (
+                isinstance(clade_data, ResultsContainer)
+                and optimal_hyperparams is None
+            ):
                 best_model_results = clade_data
-            else:
+            elif optimal_hyperparams is not None:
                 best_model_results = next(
                     filter(
                         lambda x: x.hyperparameters
                         == optimal_hyperparams[Ab][clade],
                         clade_data,
                     )
+                )
+            else:
+                raise ValueError(
+                    "If optimal hyperparameters are not supplied then results must be a dictionary of ResultsContainers"  # noqa: E501
                 )
             training_accuracy.append(best_model_results.training_accuracy)
             testing_accuracy.append(best_model_results.testing_accuracy)
@@ -112,7 +121,7 @@ def fit_Ab_models(
     Ab_hps: Dict[int, Dict[str, Union[float, int]]],
     model_type: str,
     data_dir: str,
-) -> Dict[int, Union[Lasso, Ridge]]:
+) -> Dict[int, Union[Lasso, Ridge, ElasticNet]]:
 
     training_data = load_training_data(data_dir)
     training_metadata = load_metadata(data_dir)[0]
@@ -193,6 +202,37 @@ def evaluate_models(
         "wb",
     ) as a:
         pickle.dump(corr_coefs, a)
+
+
+def convolution_impact(Ab: str, results_dir: str):
+    # get the corr coefficients for the convolved and non-convolved data
+    pearson_coefficients = []
+    with open(
+        os.path.join(
+            results_dir,
+            f"{Ab}_neighbouring_nodes_model_coefficients_pearson_coef.pkl",
+        ),
+        "rb",
+    ) as a:
+        pearson_coefficients.append(pickle.load(a))
+    with open(
+        os.path.join(
+            results_dir,
+            "convolved",
+            f"{Ab}_neighbouring_nodes_model_coefficients_pearson_coef.pkl",
+        ),
+        "rb",
+    ) as a:
+        pearson_coefficients.append(pickle.load(a))
+    # unpack dictionaries of each clade
+    pearson_coefficients = [list(i.values()) for i in pearson_coefficients]
+
+    plt.clf()
+    plt.boxplot(pearson_coefficients, labels=["Unconvolved", "Convolved"])
+    plt.tick_params(labelrotation=90)
+    plt.ylabel("Pearson Correlation Coefficient")
+    plt.title(Ab.upper())
+    plt.tight_layout()
 
 
 if __name__ == "__main__":
