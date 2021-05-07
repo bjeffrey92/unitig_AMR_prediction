@@ -4,9 +4,10 @@ import logging
 from typing import Dict
 from functools import partial
 
-from sklearn.metrics import mean_squared_error
-from numpy import sort, array_equal
+import numpy as np
 from bayes_opt import BayesianOptimization
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error
 
 from linear_model.utils import (
     load_training_data,
@@ -24,8 +25,13 @@ def fit_xgboost(training_features, training_labels):
     ...
 
 
-def fit_rf(training_features, training_labels):
-    ...
+def fit_rf(
+    training_features, training_labels, **kwargs
+) -> RandomForestRegressor:
+    kwargs = {k: round(v) for k, v in kwargs.items()}
+    reg = RandomForestRegressor(**kwargs)
+    reg.fit(training_features, training_labels)
+    return reg
 
 
 def train_evaluate(
@@ -35,8 +41,8 @@ def train_evaluate(
     testing_labels,
     validation_features,
     validation_labels,
-    adj,
-    model_type,
+    adj: bool,
+    model_type: str,
     **kwargs,
 ):
 
@@ -116,9 +122,9 @@ def leave_one_out_CV(
     model_type: str = "random_forest",
     adj: str = None,
 ) -> Dict:
-    clades = sort(training_metadata.clusters.unique())
-    assert array_equal(
-        sort(clades), sort(testing_metadata.clusters.unique())
+    clades = np.sort(training_metadata.clusters.unique())
+    assert np.array_equal(
+        np.sort(clades), np.sort(testing_metadata.clusters.unique())
     ), "Different clades found in training and testing metadata"
 
     results_dict = {}
@@ -142,7 +148,12 @@ def leave_one_out_CV(
         ) = input_data[:4]
 
         if model_type == "random_forest":
-            pbounds = {}
+            pbounds = {
+                "n_estimators": [1000, 10000],
+                "max_depth": [2, 5],
+                "min_samples_split": [2, 10],
+                "min_samples_leaf": [2, 2],
+            }
         elif model_type == "xgboost":
             pbounds = {}
         else:
