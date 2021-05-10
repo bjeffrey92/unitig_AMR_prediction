@@ -21,6 +21,9 @@ from linear_model.utils import (
 )
 
 
+ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
+
+
 def fit_xgboost(training_features, training_labels):
     ...
 
@@ -57,7 +60,8 @@ def train_evaluate(
     if model_type == "random_forest":
         reg = fit_rf(training_features, training_labels, **kwargs)
     elif model_type == "xgboost":
-        reg = fit_xgboost(training_features, training_labels, **kwargs)
+        raise NotImplementedError(model_type)
+        # reg = fit_xgboost(training_features, training_labels, **kwargs)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -175,14 +179,14 @@ def leave_one_out_CV(
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer.maximize(n_iter=10)
+        optimizer.maximize(init_points=5, n_iter=5)
 
         logging.info(
             "Optimization complete, extracting metrics for best hyperparameter \
         combination"
         )
         results_dict[left_out_clade] = train_evaluate(
-            *(input_data + [adj, model_type]),
+            *(list(input_data) + [adj, model_type]),
             **optimizer.max["params"],
         )
 
@@ -201,42 +205,45 @@ def save_output(
         pickle.dump(results_dict, a)
 
 
-def main(model_type: str = "random_forest", convolve: bool = False):
-    root_dir = "data/gonno/model_inputs/freq_5_95/"
+def main(
+    outcome: str,
+    model_type: str = "random_forest",
+    convolve: bool = False,
+):
 
-    outcomes = os.listdir(root_dir)
-    for outcome in outcomes:
-        logging.info(f"Fitting models with {outcome}")
-        data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
-        results_dir = (
-            f"decision_tree_models/results/{model_type}/gwas_filtered/"
-            + "cluster_wise_CV"
-        )
-        if convolve:
-            results_dir = os.path.join(results_dir, "convolved")
+    logging.info(f"Fitting models with {outcome}")
+    data_dir = os.path.join(ROOT_DIR, outcome, "gwas_filtered")
+    results_dir = (
+        f"decision_tree_models/results/{model_type}/gwas_filtered/"
+        + "cluster_wise_CV"
+    )
+    if convolve:
+        results_dir = os.path.join(results_dir, "convolved")
 
-        training_data = load_training_data(data_dir)
-        testing_data = load_testing_data(data_dir)
-        training_metadata, testing_metadata = load_metadata(data_dir)
-        if convolve:
-            adj = load_adjacency_matrix(data_dir)
-        else:
-            adj = None
+    training_data = load_training_data(data_dir)
+    testing_data = load_testing_data(data_dir)
+    training_metadata, testing_metadata = load_metadata(data_dir)
+    if convolve:
+        adj = load_adjacency_matrix(data_dir)
+    else:
+        adj = None
 
-        results_dict = leave_one_out_CV(
-            training_data,
-            testing_data,
-            training_metadata,
-            testing_metadata,
-            model_type,
-            adj,
-        )
+    results_dict = leave_one_out_CV(
+        training_data,
+        testing_data,
+        training_metadata,
+        testing_metadata,
+        model_type,
+        adj,
+    )
 
-        save_output(results_dict, results_dir, outcome, model_type)
+    save_output(results_dict, results_dir, outcome, model_type)
 
 
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    main()
+    outcomes = os.listdir(ROOT_DIR)
+    for outcome in outcomes:
+        main(outcome)
