@@ -6,8 +6,8 @@ from functools import partial
 
 import numpy as np
 from bayes_opt import BayesianOptimization
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
+from skranger.ensemble import RangerForestRegressor
 
 from linear_model.utils import (
     load_training_data,
@@ -30,9 +30,9 @@ def fit_xgboost(training_features, training_labels):
 
 def fit_rf(
     training_features, training_labels, **kwargs
-) -> RandomForestRegressor:
+) -> RangerForestRegressor:
     kwargs = {k: round(v) for k, v in kwargs.items()}
-    reg = RandomForestRegressor(**kwargs)
+    reg = RangerForestRegressor(**kwargs)
     reg.fit(training_features, training_labels)
     return reg
 
@@ -48,8 +48,6 @@ def train_evaluate(
     model_type: str,
     **kwargs,
 ):
-
-    logging.info("")
 
     if adj is not None:
         training_features = convolve(training_features, adj)
@@ -143,7 +141,7 @@ def leave_one_out_CV(
             testing_metadata,
             left_out_clade,
         )
-
+        input_data = [np.array(data) for data in input_data]
         (
             training_features,
             training_labels,
@@ -155,8 +153,7 @@ def leave_one_out_CV(
             pbounds = {
                 "n_estimators": [1000, 10000],
                 "max_depth": [2, 5],
-                "min_samples_split": [2, 10],
-                "min_samples_leaf": [2, 2],
+                "min_node_size": [2, 10],
             }
         elif model_type == "xgboost":
             pbounds = {}
