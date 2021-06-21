@@ -141,7 +141,6 @@ def leave_one_out_CV(
             testing_metadata,
             left_out_clade,
         )
-        input_data = [np.array(data) for data in input_data]
         (
             training_features,
             training_labels,
