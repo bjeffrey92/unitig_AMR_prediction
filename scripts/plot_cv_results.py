@@ -1,9 +1,11 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import pickle
 import glob
 import os
+import pickle
 import re
+from typing import Dict
+
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
 def load_lasso_data(data_dir):
@@ -51,15 +53,20 @@ def convert_to_dataframe(CV_results):
     }  # will be converted to df
     for left_out_clade, d in CV_results.items():
         df_dictionary["left_out_clade"].append(left_out_clade)
-        df_dictionary["training_accuracy"].append(
-            d["accuracies"][0]["training_accuracy"]
-        )
-        df_dictionary["testing_accuracy"].append(
-            d["accuracies"][0]["testing_accuracy"]
-        )
-        df_dictionary["validation_accuracy"].append(
-            d["accuracies"][0]["validation_accuracy"]
-        )
+        if isinstance(d, Dict):
+            df_dictionary["training_accuracy"].append(
+                d["accuracies"][0]["training_accuracy"]
+            )
+            df_dictionary["testing_accuracy"].append(
+                d["accuracies"][0]["testing_accuracy"]
+            )
+            df_dictionary["validation_accuracy"].append(
+                d["accuracies"][0]["validation_accuracy"]
+            )
+        else:
+            df_dictionary["training_accuracy"].append(d.training_accuracy)
+            df_dictionary["testing_accuracy"].append(d.testing_accuracy)
+            df_dictionary["validation_accuracy"].append(d.validation_accuracy)
 
     return pd.DataFrame(df_dictionary)
 
@@ -197,13 +204,15 @@ def box_plot_of_results(data, filename):
     n = 0
     for Ab in data.keys():
         df = data[Ab]
-        df = df.rename(
+        df.rename(
             columns={
                 "training_accuracy": "Train",
                 "testing_accuracy": "Test",
                 "validation_accuracy": "Validate",
-            }
+            },
+            inplace=True,
         )
+        df = df[["Train", "Test", "Validate"]]
         axs[n].boxplot(df, notch=False, labels=df.columns)
         axs[n].set_title(Ab.upper().split("_")[1])
         axs[n].tick_params(labelrotation=90)
@@ -218,16 +227,17 @@ def box_plot_of_results(data, filename):
 
 
 if __name__ == "__main__":
-    # data_dir = 'lasso_model/results/linear_model_results/cross_validation_results/'
-    # data = load_lasso_data(data_dir)
+    data_dir = "lasso_model/results/linear_model_results/cross_validation_results/"  # noqa: E501
+    data = load_lasso_data(data_dir)
 
-    # svr results are stored within subdir with name of Ab, unlike rest of results which are all stored in one dir
-    dir_pattern = (
-        "kernel_learning",
-        "cluster_wise_cross_validation/SVR_results/SVR_CV_results_mean_acc_per_bin.pkl",
-    )
-    data_dir = "."
-    data = get_SVR_results(dir_pattern)
+    # svr results are stored within subdir with name of Ab,
+    # unlike rest of results which are all stored in one dir
+    # dir_pattern = (
+    #     "kernel_learning",
+    #     "cluster_wise_cross_validation/SVR_results/SVR_CV_results_mean_acc_per_bin.pkl",
+    # )
+    # data_dir = "."
+    # data = get_SVR_results(dir_pattern)
 
     Abs = list(data.keys())
     Abs.sort()  # to maintain order
@@ -236,4 +246,6 @@ if __name__ == "__main__":
         Ab: df.set_index("left_out_clade") for Ab, df in accuracy_data.items()
     }
 
-    box_plot_of_results(data, os.path.join(data_dir, "CV_accuracy.png"))
+    box_plot_of_results(
+        accuracy_data, os.path.join(data_dir, "CV_accuracy.png")
+    )
