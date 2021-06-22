@@ -8,6 +8,7 @@ import numpy as np
 from bayes_opt import BayesianOptimization
 from sklearn.metrics import mean_squared_error
 from skranger.ensemble import RangerForestRegressor
+from xgboost import XGBRegressor
 
 from linear_model.utils import (
     load_training_data,
@@ -24,8 +25,11 @@ from linear_model.utils import (
 ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
 
 
-def fit_xgboost(training_features, training_labels):
-    ...
+def fit_xgboost(training_features, training_labels, **kwargs) -> XGBRegressor:
+    kwargs = {k: round(v) for k, v in kwargs.items()}
+    reg = XGBRegressor(**kwargs)
+    reg.fit(training_features, training_labels)
+    return reg
 
 
 def fit_rf(
@@ -55,11 +59,19 @@ def train_evaluate(
         if validation_features is not None:
             validation_features = convolve(validation_features, adj)
 
+    # keep as tensor so can be cached (needs to be hashable)
+    training_features = np.array(training_features)
+    training_labels = np.array(training_labels)
+    testing_features = np.array(testing_features)
+    testing_labels = np.array(testing_labels)
+    if validation_features is not None:
+        validation_features = np.array(validation_features)
+        validation_labels = np.array(validation_labels)
+
     if model_type == "random_forest":
         reg = fit_rf(training_features, training_labels, **kwargs)
     elif model_type == "xgboost":
-        raise NotImplementedError(model_type)
-        # reg = fit_xgboost(training_features, training_labels, **kwargs)
+        reg = fit_xgboost(training_features, training_labels, **kwargs)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -155,7 +167,15 @@ def leave_one_out_CV(
                 "min_node_size": [2, 10],
             }
         elif model_type == "xgboost":
-            pbounds = {}
+            pbounds = {
+                "max_depth": [2, 5],
+                "n_estimators": [1000, 10000],
+                "eta": [0, 1],  # learning rate
+                "gamma": [0, 10],  # min loss needed to split the tree further
+                "min_child_weight": [2, 10],  # samples per node
+                "lambda": [0, 2],  # l2 regularization constant
+                "alpha": [0, 2],  # l1 regularlization constant
+            }
         else:
             raise ValueError(f"Unknown model type {model_type}")
 
@@ -175,7 +195,12 @@ def leave_one_out_CV(
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer.maximize(init_points=5, n_iter=5)
+        if model_type == "random_forest":
+            optimizer.maximize(init_points=5, n_iter=5)
+        elif model_type == "xgboost":
+            optimizer.maximize(init_points=10, n_iter=20)
+        else:
+            raise ValueError(f"Unknown model type {model_type}")
 
         logging.info(
             "Optimization complete, extracting metrics for best hyperparameter \
@@ -219,10 +244,7 @@ def main(
     training_data = load_training_data(data_dir)
     testing_data = load_testing_data(data_dir)
     training_metadata, testing_metadata = load_metadata(data_dir)
-    if convolve:
-        adj = load_adjacency_matrix(data_dir)
-    else:
-        adj = None
+    adj = load_adjacency_matrix(data_dir) if convolve else None
 
     results_dict = leave_one_out_CV(
         training_data,
