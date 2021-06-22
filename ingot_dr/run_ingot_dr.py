@@ -85,8 +85,8 @@ def _generate_reduced_features(
             # add 1 for R
             features = np.where(j == 1)[0] + 1
             features_dict[i + 1] = (
-                features,
                 np.array([i + 1] * len(features)),
+                features,
             )
         geno_df = pd.DataFrame(
             {
