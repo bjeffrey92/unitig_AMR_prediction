@@ -1,51 +1,18 @@
+import logging
 import os
 import pickle
 import subprocess
-from math import log2
 from typing import Tuple
 
 import ingot
 import numpy as np
 import pandas as pd
 from nptyping import NDArray
-from scipy.sparse import csr_matrix
 from sklearn.metrics import balanced_accuracy_score
 
-from GNN_model.utils import breakpoints
-from linear_model.utils import (
-    convolve as convolve_,
-    load_adjacency_matrix,
-    load_testing_data,
-    load_training_data,
-)
-
+from ingot_dr.utils import load_data, save_results, ResultsContainer
 
 ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
-
-
-def load_data(
-    outcome: str, *, train_or_test: str = "train", convolve: bool = False
-) -> Tuple[NDArray, NDArray]:
-    data_dir = os.path.join(ROOT_DIR, outcome, "gwas_filtered")
-
-    if train_or_test == "train":
-        unitigs_X, unitigs_y = load_training_data(data_dir)
-    elif train_or_test == "test":
-        unitigs_X, unitigs_y = load_testing_data(data_dir)
-    else:
-        raise ValueError(train_or_test)
-
-    if convolve:
-        unitigs_X = convolve_(unitigs_X, load_adjacency_matrix(data_dir))
-
-    # read in as pytorch tensors
-    unitigs_X = np.array(unitigs_X)
-    unitigs_y = np.array(unitigs_y)
-
-    unitigs_y = unitigs_y >= log2(breakpoints[outcome.split("_")[1]])
-    unitigs_y = unitigs_y.astype(int)
-
-    return unitigs_X, unitigs_y
 
 
 def _generate_reduced_features(
@@ -57,6 +24,8 @@ def _generate_reduced_features(
 ) -> Tuple[NDArray, NDArray, NDArray]:
 
     if not os.path.isfile(output_filename):
+        logging.info("Generating Reduced Features")
+
         if any(
             np.concatenate(
                 [
@@ -67,6 +36,7 @@ def _generate_reduced_features(
         ):
             raise ValueError("Empty rows or columns in genotype matrix")
 
+        # remove any duplicated rows or columns
         uniq_matrix, uniq_indices = np.unique(
             train_X, return_index=True, axis=0
         )
@@ -120,15 +90,9 @@ def _generate_reduced_features(
             raise Exception("Building reduced feature file failed")
 
     reduced_features = pd.read_csv(output_filename) - 1
-    sparse_reduced_features = csr_matrix(
-        (
-            [1] * len(reduced_features),
-            (reduced_features.row, reduced_features.col),
-        )
-    )
-    reduced_train_X = np.array(sparse_reduced_features.todense())
-    # store indices to filter the testing data
+    train_sample_indices = np.unique(reduced_features.row)
     feature_indices = np.unique(reduced_features.col)
+    reduced_train_X = train_X[np.ix_(train_sample_indices, feature_indices)]
 
     return reduced_train_X, train_y, feature_indices
 
@@ -159,20 +123,22 @@ def reduce_features(
         with open(reduced_data_filename, "wb") as a:
             pickle.dump((train_X, train_y, feature_indices), a)
     else:
+        logging.info("Loading Pre-Generated Reduced Features")
         with open(reduced_data_filename, "rb") as a:
             train_X, train_y, feature_indices = pickle.load(a)
 
     return train_X, train_y, feature_indices
 
 
-def main(outcome: str, convolve: bool = False, reduce: bool = False):
+def main(outcome: str, convolve: bool = False, reduce: bool = False, **kwargs):
 
     if convolve and reduce:
         raise ValueError("Only one of convolve or reduce can be True")
 
-    train_X, train_y = load_data(outcome, convolve=convolve)
+    logging.info(f"Loading Data for outcome: {outcome}")
+    train_X, train_y = load_data(outcome, ROOT_DIR, convolve=convolve)
     test_X, test_y = load_data(
-        outcome, train_or_test="test", convolve=convolve
+        outcome, ROOT_DIR, train_or_test="test", convolve=convolve
     )
     if reduce:
         train_X, train_y, feature_indices = reduce_features(
@@ -181,21 +147,59 @@ def main(outcome: str, convolve: bool = False, reduce: bool = False):
             "ingot_dr/reduced_unitig_features/",
             outcome,
         )
+        test_X = test_X[:, feature_indices]
 
-    clf = ingot.INGOTClassifier(
-        lambda_p=10,
-        lambda_z=0.01,
-        false_positive_rate_upper_bound=0.1,
-        max_rule_size=20,
-        solver_name="CPLEX_PY",
-        solver_options={"timeLimit": 1800},
-    )
+    logging.info("Fitting Model")
+    clf = ingot.INGOTClassifier(**kwargs)
     clf.fit(train_X, train_y)
 
+    logging.info("Saving Output")
+    train_pred = clf.predict(train_X)
     test_pred = clf.predict(test_X)
-    balanced_accuracy_score(test_y, test_pred)
+
+    results = ResultsContainer(
+        training_balanced_accuracy=balanced_accuracy_score(
+            train_y, train_pred
+        ),
+        testing_balanced_accuracy=balanced_accuracy_score(test_y, test_pred),
+        training_predictions=train_pred,
+        testing_predictions=test_pred,
+        config=kwargs.update(  # type: ignore
+            {
+                "reduce": reduce,
+                "convolve": convolve,
+            }
+        ),
+        model=clf,
+    )
+    print(results)
+
+    save_results(results, "ingot_dr/results", outcome, reduce, convolve)
 
 
 if __name__ == "__main_":
+    logging.basicConfig()
+    logging.root.setLevel(logging.INFO)
+
     outcomes = os.listdir(ROOT_DIR)
-    main(outcomes[0])
+    for outcome in outcomes:
+        main(
+            outcome,
+            reduce=True,
+            lambda_p=10,
+            lambda_z=0.01,
+            false_positive_rate_upper_bound=0.1,
+            max_rule_size=20,
+            solver_name="CPLEX_PY",
+            solver_options={"timeLimit": 1800},
+        )
+        main(
+            outcome,
+            convolve=True,
+            lambda_p=10,
+            lambda_z=0.01,
+            false_positive_rate_upper_bound=0.1,
+            max_rule_size=20,
+            solver_name="CPLEX_PY",
+            solver_options={"timeLimit": 1800},
+        )
