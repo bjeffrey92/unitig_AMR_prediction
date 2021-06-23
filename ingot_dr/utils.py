@@ -6,7 +6,6 @@ from math import log2
 from typing import Dict, Tuple
 
 import numpy as np
-from ingot import INGOTClassifier
 from nptyping import NDArray
 
 from GNN_model.utils import breakpoints
@@ -23,12 +22,13 @@ class ResultsContainer:
     training_balanced_accuracy: float
     testing_balanced_accuracy: float
 
+    training_accuracy: float
+    testing_accuracy: float
+
     training_predictions: NDArray
     testing_predictions: NDArray
 
     config: Dict
-
-    model: INGOTClassifier
 
     date_time = datetime.now()
 

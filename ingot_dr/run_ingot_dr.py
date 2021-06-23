@@ -8,7 +8,7 @@ import ingot
 import numpy as np
 import pandas as pd
 from nptyping import NDArray
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
 
 from ingot_dr.utils import load_data, save_results, ResultsContainer
 
@@ -162,6 +162,8 @@ def main(outcome: str, convolve: bool = False, reduce: bool = False, **kwargs):
             train_y, train_pred
         ),
         testing_balanced_accuracy=balanced_accuracy_score(test_y, test_pred),
+        training_accuracy=accuracy_score(train_y, train_pred),
+        testing_accuracy=accuracy_score(test_y, test_pred),
         training_predictions=train_pred,
         testing_predictions=test_pred,
         config=kwargs.update(  # type: ignore
@@ -170,7 +172,6 @@ def main(outcome: str, convolve: bool = False, reduce: bool = False, **kwargs):
                 "convolve": convolve,
             }
         ),
-        model=clf,
     )
     print(results)
 
