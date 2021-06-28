@@ -21,6 +21,7 @@ def _generate_reduced_features(
     output_filename: str,
     geno_filename: str,
     pheno_filename: str,
+    r_script_path: str,
 ) -> Tuple[NDArray, NDArray, NDArray]:
 
     if not os.path.isfile(output_filename):
@@ -66,18 +67,10 @@ def _generate_reduced_features(
         )
         geno_df.to_csv(geno_filename, index=False)
 
-        try:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-        except NameError:
-            base_dir = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/ingot_dr"  # noqa: E501
-
-        r_script = os.path.join(
-            base_dir, "feature_reduction/FeatureReduction.R"
-        )
         status = subprocess.call(
             [
                 "Rscript",
-                r_script,
+                r_script_path,
                 "-g",
                 geno_filename,
                 "-p",
@@ -102,6 +95,7 @@ def reduce_features(
     train_y: NDArray,
     output_dir: str,
     file_prefix: str,
+    r_script_path: str,
 ):
     reduced_data_filename = os.path.join(
         output_dir, f"{file_prefix}_reduced_features.pkl"
@@ -119,6 +113,7 @@ def reduce_features(
             reduced_features_filename,
             geno_filename,
             pheno_filename,
+            r_script_path,
         )
         with open(reduced_data_filename, "wb") as a:
             pickle.dump((train_X, train_y, feature_indices), a)
@@ -146,6 +141,7 @@ def main(outcome: str, convolve: bool = False, reduce: bool = False, **kwargs):
             train_y,
             "ingot_dr/reduced_unitig_features/",
             outcome,
+            "ingot_dr/reduced_unitig_features/feature_reduction/FeatureReduction.R",  # noqa: E501
         )
         test_X = test_X[:, feature_indices]
 
