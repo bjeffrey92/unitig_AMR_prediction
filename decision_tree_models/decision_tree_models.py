@@ -21,8 +21,26 @@ from linear_model.utils import (
     ResultsContainer,
 )
 
+# from .julia_interface import get_jl_decision_tree, graph_rf_model
+from decision_tree_models.julia_interface import (
+    get_jl_decision_tree,
+    graph_rf_model,
+)
+# from .utils import convert_adj_matrix
+from decision_tree_models.utils import convert_adj_matrix
 
 ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
+JL_ENV_PATH = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/DecisionTree.jl"
+
+
+def fit_graph_rf(
+    training_features, training_labels, adj, **kwargs
+) -> graph_rf_model:
+    # loads jl package, uses caching so will only happen once
+    DecisionTree = get_jl_decision_tree(JL_ENV_PATH)
+    reg = graph_rf_model(DecisionTree, convert_adj_matrix(adj), **kwargs)
+    reg.fit(training_features, training_labels)
+    return reg
 
 
 def fit_xgboost(training_features, training_labels, **kwargs) -> XGBRegressor:
@@ -50,10 +68,11 @@ def train_evaluate(
     validation_labels,
     adj: bool,
     model_type: str,
+    convolve_features: bool = False,
     **kwargs,
 ):
 
-    if adj is not None:
+    if convolve_features:
         training_features = convolve(training_features, adj)
         testing_features = convolve(testing_features, adj)
         if validation_features is not None:
@@ -72,6 +91,8 @@ def train_evaluate(
         reg = fit_rf(training_features, training_labels, **kwargs)
     elif model_type == "xgboost":
         reg = fit_xgboost(training_features, training_labels, **kwargs)
+    elif model_type == "graph_rf":
+        reg = fit_graph_rf(training_features, training_labels, adj, **kwargs)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
@@ -135,6 +156,7 @@ def leave_one_out_CV(
     testing_metadata,
     model_type: str = "random_forest",
     adj: str = None,
+    convolve_features: bool = False,
 ) -> Dict:
     clades = np.sort(training_metadata.clusters.unique())
     assert np.array_equal(
@@ -176,6 +198,14 @@ def leave_one_out_CV(
                 "lambda": [0, 2],  # l2 regularization constant
                 "alpha": [0, 2],  # l1 regularlization constant
             }
+        elif model_type == "graph_rf":
+            pbounds = {
+                "n_trees": [10, 100],
+                "max_depth": [5, 30],
+                "min_samples_leaf": [5, 25],
+                "min_samples_split": [2, 10],
+                "min_purity_increase": [0.0, 0.2],
+            }
         else:
             raise ValueError(f"Unknown model type {model_type}")
 
@@ -189,6 +219,7 @@ def leave_one_out_CV(
             validation_labels=None,
             adj=adj,
             model_type=model_type,
+            convolve_features=convolve_features,
         )
 
         logging.info("Optimizing hyperparameters")
@@ -199,6 +230,8 @@ def leave_one_out_CV(
             optimizer.maximize(init_points=5, n_iter=5)
         elif model_type == "xgboost":
             optimizer.maximize(init_points=10, n_iter=20)
+        elif model_type == "graph_rf":
+            optimizer.maximize(init_points=8, n_iter=15)
         else:
             raise ValueError(f"Unknown model type {model_type}")
 
@@ -244,7 +277,10 @@ def main(
     training_data = load_training_data(data_dir)
     testing_data = load_testing_data(data_dir)
     training_metadata, testing_metadata = load_metadata(data_dir)
-    adj = load_adjacency_matrix(data_dir) if convolve else None
+    if convolve or model_type == "graph_rf":
+        adj = load_adjacency_matrix(data_dir)
+    else:
+        adj = None
 
     results_dict = leave_one_out_CV(
         training_data,
@@ -253,6 +289,7 @@ def main(
         testing_metadata,
         model_type,
         adj,
+        convolve_features=convolve
     )
 
     save_output(results_dict, results_dir, outcome, model_type)
