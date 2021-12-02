@@ -25,20 +25,27 @@ from linear_model.utils import (
 from decision_tree_models.julia_interface import (
     get_jl_decision_tree,
     graph_rf_model,
+    julia_rf_model,
 )
+
 # from .utils import convert_adj_matrix
 from decision_tree_models.utils import convert_adj_matrix
 
 ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
-JL_ENV_PATH = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/DecisionTree.jl"
+JL_ENV_PATH = (
+    "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/DecisionTree.jl"
+)
+DecisionTree = get_jl_decision_tree(JL_ENV_PATH)
 
 
-def fit_graph_rf(
-    training_features, training_labels, adj, **kwargs
-) -> graph_rf_model:
-    # loads jl package, uses caching so will only happen once
-    DecisionTree = get_jl_decision_tree(JL_ENV_PATH)
+def fit_graph_rf(training_features, training_labels, adj, **kwargs) -> graph_rf_model:
     reg = graph_rf_model(DecisionTree, convert_adj_matrix(adj), **kwargs)
+    reg.fit(training_features, training_labels)
+    return reg
+
+
+def fit_julia_rf(training_features, training_labels, **kwargs) -> julia_rf_model:
+    reg = julia_rf_model(DecisionTree, **kwargs)
     reg.fit(training_features, training_labels)
     return reg
 
@@ -50,9 +57,7 @@ def fit_xgboost(training_features, training_labels, **kwargs) -> XGBRegressor:
     return reg
 
 
-def fit_rf(
-    training_features, training_labels, **kwargs
-) -> RangerForestRegressor:
+def fit_rf(training_features, training_labels, **kwargs) -> RangerForestRegressor:
     kwargs = {k: round(v) for k, v in kwargs.items()}
     reg = RangerForestRegressor(**kwargs)
     reg.fit(training_features, training_labels)
@@ -93,26 +98,22 @@ def train_evaluate(
         reg = fit_xgboost(training_features, training_labels, **kwargs)
     elif model_type == "graph_rf":
         reg = fit_graph_rf(training_features, training_labels, adj, **kwargs)
+    elif model_type == "julia_rf":
+        reg = fit_julia_rf(training_features, training_labels, **kwargs)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
     if validation_features is None:
         testing_predictions = reg.predict(testing_features)
-        testing_loss = float(
-            mean_squared_error(testing_labels, testing_predictions)
-        )
+        testing_loss = float(mean_squared_error(testing_labels, testing_predictions))
         return -testing_loss
     else:
         training_predictions = reg.predict(training_features)
         testing_predictions = reg.predict(testing_features)
         validation_predictions = reg.predict(validation_features)
 
-        training_accuracy = mean_acc_per_bin(
-            training_predictions, training_labels
-        )
-        testing_accuracy = mean_acc_per_bin(
-            testing_predictions, testing_labels
-        )
+        training_accuracy = mean_acc_per_bin(training_predictions, training_labels)
+        testing_accuracy = mean_acc_per_bin(testing_predictions, testing_labels)
         validation_accuracy = mean_acc_per_bin(
             validation_predictions, validation_labels
         )
@@ -129,12 +130,8 @@ def train_evaluate(
             training_accuracy=training_accuracy,
             testing_accuracy=testing_accuracy,
             validation_accuracy=validation_accuracy,
-            training_MSE=mean_squared_error(
-                training_labels, training_predictions
-            ),
-            testing_MSE=mean_squared_error(
-                testing_labels, testing_predictions
-            ),
+            training_MSE=mean_squared_error(training_labels, training_predictions),
+            testing_MSE=mean_squared_error(testing_labels, testing_predictions),
             validation_MSE=mean_squared_error(
                 validation_labels, validation_predictions
             ),
@@ -143,7 +140,7 @@ def train_evaluate(
             validation_predictions=validation_predictions,
             hyperparameters=kwargs,
             model_type=model_type,
-            model=reg,
+            model=reg if model_type not in ["graph_rf", "julia_rf"] else None,
         )
 
         return results
@@ -165,9 +162,7 @@ def leave_one_out_CV(
 
     results_dict = {}
     for left_out_clade in clades:
-        logging.info(
-            f"Formatting data for model with clade {left_out_clade} left out"
-        )
+        logging.info(f"Formatting data for model with clade {left_out_clade} left out")
         input_data = train_test_validate_split(
             training_data,
             testing_data,
@@ -198,7 +193,7 @@ def leave_one_out_CV(
                 "lambda": [0, 2],  # l2 regularization constant
                 "alpha": [0, 2],  # l1 regularlization constant
             }
-        elif model_type == "graph_rf":
+        elif model_type in ["graph_rf", "julia_rf"]:
             pbounds = {
                 "n_trees": [10, 100],
                 "max_depth": [5, 30],
@@ -230,7 +225,7 @@ def leave_one_out_CV(
             optimizer.maximize(init_points=5, n_iter=5)
         elif model_type == "xgboost":
             optimizer.maximize(init_points=10, n_iter=20)
-        elif model_type == "graph_rf":
+        elif model_type in ["graph_rf", "julia_rf"]:
             optimizer.maximize(init_points=8, n_iter=15)
         else:
             raise ValueError(f"Unknown model type {model_type}")
@@ -247,14 +242,10 @@ def leave_one_out_CV(
     return results_dict
 
 
-def save_output(
-    results_dict: Dict, results_dir: str, outcome: str, model_type: str
-):
+def save_output(results_dict: Dict, results_dir: str, outcome: str, model_type: str):
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    fname = os.path.join(
-        results_dir, outcome + f"_CV_{model_type}_predictions.pkl"
-    )
+    fname = os.path.join(results_dir, outcome + f"_CV_{model_type}_predictions.pkl")
     with open(fname, "wb") as a:
         pickle.dump(results_dict, a)
 
@@ -268,8 +259,7 @@ def main(
     logging.info(f"Fitting models with {outcome}")
     data_dir = os.path.join(ROOT_DIR, outcome, "gwas_filtered")
     results_dir = (
-        f"decision_tree_models/results/{model_type}/gwas_filtered/"
-        + "cluster_wise_CV"
+        f"decision_tree_models/results/{model_type}/gwas_filtered/" + "cluster_wise_CV"
     )
     if convolve:
         results_dir = os.path.join(results_dir, "convolved")
@@ -289,7 +279,7 @@ def main(
         testing_metadata,
         model_type,
         adj,
-        convolve_features=convolve
+        convolve_features=convolve,
     )
 
     save_output(results_dict, results_dir, outcome, model_type)
