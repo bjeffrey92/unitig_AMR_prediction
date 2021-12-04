@@ -23,7 +23,7 @@ from linear_model.utils import (
 
 # from .julia_interface import get_jl_decision_tree, graph_rf_model
 from decision_tree_models.julia_interface import (
-    get_jl_decision_tree,
+    get_jl_modules,
     graph_rf_model,
     julia_rf_model,
 )
@@ -35,18 +35,27 @@ ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
 JL_ENV_PATH = (
     "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/DecisionTree.jl"
 )
-DecisionTree = get_jl_decision_tree(JL_ENV_PATH)
+DecisionTree, JLD = get_jl_modules(JL_ENV_PATH)
 
 
 def fit_graph_rf(training_features, training_labels, adj, **kwargs) -> graph_rf_model:
-    reg = graph_rf_model(DecisionTree, convert_adj_matrix(adj), **kwargs)
-    reg.fit(training_features, training_labels)
+    reg = graph_rf_model(
+        DecisionTree,
+        JLD,
+        training_features,
+        training_labels,
+        convert_adj_matrix(adj),
+        **kwargs,
+    )
+    reg.fit()
     return reg
 
 
 def fit_julia_rf(training_features, training_labels, **kwargs) -> julia_rf_model:
-    reg = julia_rf_model(DecisionTree, **kwargs)
-    reg.fit(training_features, training_labels)
+    reg = julia_rf_model(
+        DecisionTree, JLD, training_features, training_labels, **kwargs
+    )
+    reg.fit()
     return reg
 
 
@@ -140,7 +149,7 @@ def train_evaluate(
             validation_predictions=validation_predictions,
             hyperparameters=kwargs,
             model_type=model_type,
-            model=reg if model_type not in ["graph_rf", "julia_rf"] else None,
+            model=reg,
         )
 
         return results
@@ -245,6 +254,18 @@ def leave_one_out_CV(
 def save_output(results_dict: Dict, results_dir: str, outcome: str, model_type: str):
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
+
+    # cant pickle julia object so call method to save model as jld object and record
+    # the path in the pickled python object
+    if model_type in ["graph_rf", "julia_rf"]:
+        for k, v in results_dict.items():
+            clade_fname = os.path.join(
+                results_dir, outcome + f"_clade_{k}_{model_type}.jld"
+            )
+            v.model.save_model(clade_fname)
+            v.model = clade_fname
+            results_dict[k] = v
+
     fname = os.path.join(results_dir, outcome + f"_CV_{model_type}_predictions.pkl")
     with open(fname, "wb") as a:
         pickle.dump(results_dict, a)
