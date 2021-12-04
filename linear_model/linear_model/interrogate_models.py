@@ -28,7 +28,7 @@ def get_results(results_dir: str) -> Dict:
         Ab = re.findall(r"log2_(.*)_mic", f)[0]
         with open(f, "rb") as a:
             results[Ab] = pickle.load(a)
-    return results
+    return {k: results[k] for k in sorted(results.keys())}
 
 
 def extract_optimal_hyperparams(ab_results: Dict) -> Dict:
@@ -37,9 +37,7 @@ def extract_optimal_hyperparams(ab_results: Dict) -> Dict:
         if isinstance(data, list):
             test_accuracies = [i.testing_accuracy for i in data]
             best_fit_ix = test_accuracies.index(max(test_accuracies))
-            clade_optimal_hyperparams[clade] = data[
-                best_fit_ix
-            ].hyperparameters
+            clade_optimal_hyperparams[clade] = data[best_fit_ix].hyperparameters
         elif isinstance(data, ResultsContainer):
             clade_optimal_hyperparams[clade] = data.hyperparameters
         else:
@@ -64,16 +62,12 @@ def plot_best_fits(
         testing_accuracy = []
         validation_accuracy = []
         for clade, clade_data in Ab_data.items():
-            if (
-                isinstance(clade_data, ResultsContainer)
-                and optimal_hyperparams is None
-            ):
+            if isinstance(clade_data, ResultsContainer) and optimal_hyperparams is None:
                 best_model_results = clade_data
             elif optimal_hyperparams is not None:
                 best_model_results = next(
                     filter(
-                        lambda x: x.hyperparameters
-                        == optimal_hyperparams[Ab][clade],
+                        lambda x: x.hyperparameters == optimal_hyperparams[Ab][clade],
                         clade_data,
                     )
                 )
@@ -103,11 +97,10 @@ def plot_best_fits(
         axs[n].boxplot(df, notch=False, labels=df.columns)
         axs[n].set_title(Ab.upper())
         axs[n].tick_params(labelrotation=90)
+        axs[n].set_ylim([0, 100])
         n += 1
 
-    fig.text(
-        0, 0.5, "Mean Accuracy per MIC Bin", va="center", rotation="vertical"
-    )
+    fig.text(0, 0.5, "Mean Accuracy per MIC Bin", va="center", rotation="vertical")
     fig.tight_layout()
 
     if filename is not None:
@@ -142,9 +135,7 @@ def fit_Ab_models(
         if model_type == "elastic_net":
             model = fit_elastic_net(training_features, training_labels, **hps)
         else:
-            model = fit_model(
-                training_features, training_labels, model_type, **hps
-            )
+            model = fit_model(training_features, training_labels, model_type, **hps)
         models[clade] = model
 
     return models
@@ -190,9 +181,7 @@ def evaluate_models(
 
     fig.tight_layout()
     fig.savefig(
-        os.path.join(
-            results_dir, f"{Ab}_neighbouring_nodes_model_coefficients.png"
-        )
+        os.path.join(results_dir, f"{Ab}_neighbouring_nodes_model_coefficients.png")
     )
     with open(
         os.path.join(
@@ -247,9 +236,7 @@ if __name__ == "__main__":
 
         if model_type == "elastic_net":  # hps optimised with bayes_opt
             for Ab, models_dict in results.items():
-                data_dir = os.path.join(
-                    root_dir, f"log2_{Ab}_mic", "gwas_filtered"
-                )
+                data_dir = os.path.join(root_dir, f"log2_{Ab}_mic", "gwas_filtered")
                 evaluate_models(Ab, models_dict, data_dir, results_dir)
 
         else:  # others did grid search over alpha
@@ -265,9 +252,7 @@ if __name__ == "__main__":
             )
 
             for Ab, Ab_hps in optimal_hyperparams.items():
-                data_dir = os.path.join(
-                    root_dir, f"log2_{Ab}_mic", "gwas_filtered"
-                )
+                data_dir = os.path.join(root_dir, f"log2_{Ab}_mic", "gwas_filtered")
 
                 models_dict = fit_Ab_models(Ab, Ab_hps, model_type, data_dir)
 
