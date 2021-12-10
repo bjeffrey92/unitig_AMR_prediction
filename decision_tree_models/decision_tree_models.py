@@ -275,13 +275,21 @@ def main(
     outcome: str,
     model_type: str = "random_forest",
     convolve: bool = False,
+    gwas_filtered: bool = True,
 ):
 
     logging.info(f"Fitting models with {outcome}")
-    data_dir = os.path.join(ROOT_DIR, outcome, "gwas_filtered")
-    results_dir = (
-        f"decision_tree_models/results/{model_type}/gwas_filtered/" + "cluster_wise_CV"
-    )
+    data_dir = os.path.join(ROOT_DIR, outcome)
+    if gwas_filtered:
+        data_dir = os.path.join(data_dir, "gwas_filtered")
+        results_dir = os.path.join(
+            f"decision_tree_models/results/{model_type}/gwas_filtered/",
+            "cluster_wise_CV",
+        )
+    else:
+        results_dir = os.path.join(
+            f"decision_tree_models/results/{model_type}", "cluster_wise_CV"
+        )
     if convolve:
         results_dir = os.path.join(results_dir, "convolved")
 

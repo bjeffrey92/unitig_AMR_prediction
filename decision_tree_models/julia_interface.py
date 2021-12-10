@@ -35,12 +35,16 @@ class base_model:
         assert hasattr(self, "model")
         return self.DecisionTree.apply_forest(self.model, check_data_format(features))
 
-    def save_model(self, path: str):
+    def save_model(self, path: str, save_features_and_labels: bool = False):
         objects_dict = {
             "model": self.model,
-            "features": self.features,
-            "labels": self.labels,
         }
+        if save_features_and_labels:
+            objects_dict = {
+                **objects_dict,
+                "features": self.features,
+                "labels": self.labels,
+            }
         self.JLD.save(path, objects_dict)
 
 
@@ -82,7 +86,7 @@ class graph_rf_model(base_model):
             self.min_samples_leaf,
             self.min_samples_split,
             self.min_purity_increase,
-            adj=self.adj,
+            sparse_adj=self.adj,
         )
 
 
