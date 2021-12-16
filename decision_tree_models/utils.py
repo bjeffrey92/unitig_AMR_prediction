@@ -14,3 +14,9 @@ def check_data_format(data: np.ndarray) -> np.ndarray:
         return data
     else:
         return data.astype("float64")
+
+
+@lru_cache(maxsize=1)
+def adj_matrix_to_dict(adj: Tensor):
+    indices = convert_adj_matrix(adj)
+    return {i: indices[1, indices[0] == i] for i in np.unique(indices[0])}
