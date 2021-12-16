@@ -28,8 +28,8 @@ from decision_tree_models.julia_interface import (
     julia_rf_model,
 )
 
-# from .utils import convert_adj_matrix
-from decision_tree_models.utils import convert_adj_matrix
+# from .utils import convert_adj_matrix, adj_matrix_to_dict
+from decision_tree_models.utils import adj_matrix_to_dict
 
 ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
 JL_ENV_PATH = (
@@ -44,7 +44,7 @@ def fit_graph_rf(training_features, training_labels, adj, **kwargs) -> graph_rf_
         JLD,
         training_features,
         training_labels,
-        convert_adj_matrix(adj),
+        adj_matrix_to_dict(adj),
         **kwargs,
     )
     reg.fit()
@@ -214,7 +214,11 @@ def leave_one_out_CV(
                 "min_purity_increase": [0.01, 0.3],
             }
             if model_type == "graph_rf":
-                pbounds = {**pbounds, "jump_probability": [0.01, 0.3]}
+                pbounds = {
+                    **pbounds,
+                    "jump_probability": [0.01, 0.2],
+                    "graph_steps": [1, 6],
+                }
         else:
             raise ValueError(f"Unknown model type {model_type}")
 

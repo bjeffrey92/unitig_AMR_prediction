@@ -2,6 +2,7 @@ from functools import lru_cache
 from os import environ
 from multiprocessing import cpu_count
 
+# needs to be set before starting julia
 environ["JULIA_NUM_THREADS"] = str(cpu_count() - 2)
 
 from julia.api import Julia
@@ -65,6 +66,7 @@ class graph_rf_model(base_model):
         min_samples_split=2,
         min_purity_increase=0.0,
         jump_probability=0.0,
+        graph_steps=1,
     ):
         super().__init__(
             DecisionTree,
@@ -79,6 +81,7 @@ class graph_rf_model(base_model):
         self.min_samples_split = round(min_samples_split)
         self.min_purity_increase = min_purity_increase
         self.jump_probability = jump_probability
+        self.graph_steps = graph_steps
 
     def fit(self):
         self.model = self.DecisionTree.build_forest(
@@ -93,6 +96,7 @@ class graph_rf_model(base_model):
             self.min_purity_increase,
             self.jump_probability,
             sparse_adj=self.adj,
+            graph_steps=self.graph_steps,
         )
 
 
