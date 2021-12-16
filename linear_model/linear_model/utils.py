@@ -25,12 +25,8 @@ def load_testing_data(data_dir):
 
 @lru_cache(maxsize=1)
 def load_metadata(data_dir):
-    training_metadata = pd.read_csv(
-        os.path.join(data_dir, "training_metadata.csv")
-    )
-    testing_metadata = pd.read_csv(
-        os.path.join(data_dir, "testing_metadata.csv")
-    )
+    training_metadata = pd.read_csv(os.path.join(data_dir, "training_metadata.csv"))
+    testing_metadata = pd.read_csv(os.path.join(data_dir, "testing_metadata.csv"))
     return training_metadata, testing_metadata
 
 
@@ -118,11 +114,13 @@ def mean_acc_per_bin(
     accuracy in each bin.
     Returns the mean accuracy across all bins
     """
-    assert len(predictions) == len(labels)
+    assert len(predictions) == len(labels) and len(labels) > 0
 
     # apply Freedman-Diaconis rule to get optimal bin size
     # https://en.wikipedia.org/wiki/Freedman%E2%80%93Diaconis_rule
     IQR = np.subtract(*np.percentile(labels, [75, 25]))
+    if IQR == 0:
+        IQR = labels.max() - labels.min()
     bin_size = 2 * IQR / (len(labels) ** (1 / 3))
     bin_size = int(
         np.ceil(bin_size)
@@ -157,9 +155,7 @@ def mean_acc_per_bin(
 def load_adjacency_matrix(data_dir, degree_normalised=False):
     if degree_normalised:
         adj = torch.load(
-            os.path.join(
-                data_dir, "degree_normalised_unitig_adjacency_tensor.pt"
-            )
+            os.path.join(data_dir, "degree_normalised_unitig_adjacency_tensor.pt")
         )
     else:
         adj = torch.load(os.path.join(data_dir, "unitig_adjacency_tensor.pt"))
