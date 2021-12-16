@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 from dataclasses import dataclass
 import nptyping
-from typing import Dict, Any
+from typing import Dict, Any, Union, List
 
 import torch
 import pandas as pd
@@ -35,19 +35,22 @@ def train_test_validate_split(
     testing_data,
     training_metadata,
     testing_metadata,
-    left_out_clade,
+    left_out_clades: Union[List, int],
 ):
+    if isinstance(left_out_clades, int):
+        left_out_clades = [left_out_clades]
+
     training_indices = training_metadata.loc[
-        training_metadata.clusters != left_out_clade
+        training_metadata.clusters.isin(left_out_clades)
     ].index
     testing_indices = testing_metadata.loc[
-        testing_metadata.clusters != left_out_clade
+        testing_metadata.clusters.isin(left_out_clades)
     ].index
     validation_indices_1 = training_metadata.loc[
-        training_metadata.clusters == left_out_clade
+        training_metadata.clusters.isin(left_out_clades)
     ].index  # extract data from training set
     validation_indices_2 = testing_metadata.loc[
-        testing_metadata.clusters == left_out_clade
+        testing_metadata.clusters.isin(left_out_clades)
     ].index  # extract data from testing set
 
     training_features = torch.index_select(

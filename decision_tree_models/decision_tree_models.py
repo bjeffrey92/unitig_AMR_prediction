@@ -163,15 +163,19 @@ def leave_one_out_CV(
     model_type: str = "random_forest",
     adj: str = None,
     convolve_features: bool = False,
+    n_splits: int = 12,
 ) -> Dict:
     clades = np.sort(training_metadata.clusters.unique())
     assert np.array_equal(
         np.sort(clades), np.sort(testing_metadata.clusters.unique())
     ), "Different clades found in training and testing metadata"
 
+    n_splits = max([n_splits, len(clades)])
+    clade_groups = [list(i) for i in np.array_split(clades, n_splits)]
+
     results_dict = {}
-    for left_out_clade in clades:
-        logging.info(f"Formatting data for model with clade {left_out_clade} left out")
+    for left_out_clade in clade_groups:
+        logging.info(f"Formatting data for model with clades {left_out_clade} left out")
         input_data = train_test_validate_split(
             training_data,
             testing_data,
@@ -204,14 +208,13 @@ def leave_one_out_CV(
             }
         elif model_type in ["graph_rf", "julia_rf"]:
             pbounds = {
-                "n_trees": [10, 100],
-                "max_depth": [5, 30],
-                "min_samples_leaf": [5, 25],
-                "min_samples_split": [2, 10],
-                "min_purity_increase": [0.0, 0.2],
+                "n_trees": [10, 1000],
+                "max_depth": [5, 20],
+                "min_samples_split": [5, 25],
+                "min_purity_increase": [0.01, 0.3],
             }
             if model_type == "graph_rf":
-                pbounds = {**pbounds, "jump_probability": [0.0, 0.5]}
+                pbounds = {**pbounds, "jump_probability": [0.01, 0.3]}
         else:
             raise ValueError(f"Unknown model type {model_type}")
 

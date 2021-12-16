@@ -58,7 +58,6 @@ class graph_rf_model(base_model):
         adj,
         n_trees=10,
         max_depth=-1,
-        min_samples_leaf=5,
         min_samples_split=2,
         min_purity_increase=0.0,
         jump_probability=0.0,
@@ -72,7 +71,7 @@ class graph_rf_model(base_model):
         self.adj = adj
         self.n_trees = round(n_trees)
         self.max_depth = round(max_depth)
-        self.min_samples_leaf = round(min_samples_leaf)
+        self.min_samples_leaf = round(min_samples_split)  # same as below
         self.min_samples_split = round(min_samples_split)
         self.min_purity_increase = min_purity_increase
         self.jump_probability = jump_probability
@@ -102,7 +101,6 @@ class julia_rf_model(base_model):
         labels,
         n_trees=10,
         max_depth=-1,
-        min_samples_leaf=5,
         min_samples_split=2,
         min_purity_increase=0.0,
     ):
@@ -114,7 +112,7 @@ class julia_rf_model(base_model):
         )
         self.n_trees = round(n_trees)
         self.max_depth = round(max_depth)
-        self.min_samples_leaf = round(min_samples_leaf)
+        self.min_samples_leaf = round(min_samples_split)  # same as below
         self.min_samples_split = round(min_samples_split)
         self.min_purity_increase = min_purity_increase
 
