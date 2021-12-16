@@ -248,7 +248,7 @@ def leave_one_out_CV(
             "Optimization complete, extracting metrics for best hyperparameter \
         combination"
         )
-        results_dict[left_out_clade] = train_evaluate(
+        results_dict[str(left_out_clade)] = train_evaluate(
             *(list(input_data) + [adj, model_type]),
             **optimizer.max["params"],
         )
