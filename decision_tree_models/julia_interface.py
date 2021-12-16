@@ -61,6 +61,7 @@ class graph_rf_model(base_model):
         min_samples_leaf=5,
         min_samples_split=2,
         min_purity_increase=0.0,
+        jump_probability=0.0,
     ):
         super().__init__(
             DecisionTree,
@@ -74,6 +75,7 @@ class graph_rf_model(base_model):
         self.min_samples_leaf = round(min_samples_leaf)
         self.min_samples_split = round(min_samples_split)
         self.min_purity_increase = min_purity_increase
+        self.jump_probability = jump_probability
 
     def fit(self):
         self.model = self.DecisionTree.build_forest(
@@ -86,6 +88,7 @@ class graph_rf_model(base_model):
             self.min_samples_leaf,
             self.min_samples_split,
             self.min_purity_increase,
+            self.jump_probability,
             sparse_adj=self.adj,
         )
 

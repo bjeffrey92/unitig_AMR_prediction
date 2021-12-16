@@ -210,6 +210,8 @@ def leave_one_out_CV(
                 "min_samples_split": [2, 10],
                 "min_purity_increase": [0.0, 0.2],
             }
+            if model_type == "graph_rf":
+                pbounds = {**pbounds, "jump_probability": [0.0, 0.5]}
         else:
             raise ValueError(f"Unknown model type {model_type}")
 
