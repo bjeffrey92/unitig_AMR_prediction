@@ -15,6 +15,7 @@ from linear_model.utils import (
     load_testing_data,
     load_metadata,
     load_adjacency_matrix,
+    load_adjacency_dictionary,
     train_test_validate_split,
     convolve,
     mean_acc_per_bin,
@@ -31,7 +32,6 @@ from decision_tree_models.julia_interface import (
 # from .utils import convert_adj_matrix, adj_matrix_to_dict
 from decision_tree_models.utils import adj_matrix_to_dict
 
-ROOT_DIR = "data/gonno/model_inputs/freq_5_95/"
 JL_ENV_PATH = (
     "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/DecisionTree.jl"
 )
@@ -39,12 +39,14 @@ DecisionTree, JLD = get_jl_modules(JL_ENV_PATH)
 
 
 def fit_graph_rf(training_features, training_labels, adj, **kwargs) -> graph_rf_model:
+    if not isinstance(adj, dict):
+        adj = adj_matrix_to_dict(adj)
     reg = graph_rf_model(
         DecisionTree,
         JLD,
         training_features,
         training_labels,
-        adj_matrix_to_dict(adj),
+        adj,
         **kwargs,
     )
     reg.fit()
@@ -282,13 +284,15 @@ def save_output(results_dict: Dict, results_dir: str, outcome: str, model_type: 
 
 def main(
     outcome: str,
+    root_dir: str,
     model_type: str = "random_forest",
     convolve: bool = False,
     gwas_filtered: bool = True,
+    results_dir_suffix: str = "",
 ):
 
     logging.info(f"Fitting models with {outcome}")
-    data_dir = os.path.join(ROOT_DIR, outcome)
+    data_dir = os.path.join(root_dir, outcome)
     if gwas_filtered:
         data_dir = os.path.join(data_dir, "gwas_filtered")
         results_dir = os.path.join(
@@ -302,10 +306,16 @@ def main(
     if convolve:
         results_dir = os.path.join(results_dir, "convolved")
 
+    if results_dir.endswith("/"):
+        results_dir = results_dir[:-1]
+    results_dir += results_dir_suffix
+
     training_data = load_training_data(data_dir)
     testing_data = load_testing_data(data_dir)
     training_metadata, testing_metadata = load_metadata(data_dir)
-    if convolve or model_type == "graph_rf":
+    if model_type == "graph_rf":
+        adj = load_adjacency_dictionary(data_dir)
+    elif convolve:
         adj = load_adjacency_matrix(data_dir)
     else:
         adj = None
@@ -327,6 +337,8 @@ if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    outcomes = os.listdir(ROOT_DIR)
+    root_dir = "data/gonno/model_inputs/unfiltered"
+    # root_dir = "data/gonno/model_inputs/freq_5_95/"
+    outcomes = os.listdir(root_dir)
     for outcome in outcomes:
-        main(outcome)
+        main(outcome, root_dir)
