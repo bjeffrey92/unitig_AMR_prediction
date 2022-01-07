@@ -3,7 +3,7 @@ from os import environ
 from multiprocessing import cpu_count
 
 # needs to be set before starting julia
-environ["JULIA_NUM_THREADS"] = str(cpu_count() - 2)
+environ["JULIA_NUM_THREADS"] = str(cpu_count() - 4)
 
 from julia.api import Julia
 
@@ -90,6 +90,7 @@ class graph_rf_model(base_model):
             -1,  # n_subfeatures
             self.n_trees,
             0.7,  # partial_sampling
+            0.7,  # feature_sampling
             self.max_depth,
             self.min_samples_leaf,
             self.min_samples_split,
@@ -131,6 +132,7 @@ class julia_rf_model(base_model):
             -1,  # n_subfeatures
             self.n_trees,
             0.7,  # partial_sampling
+            0.7,  # feature_sampling
             self.max_depth,
             self.min_samples_leaf,
             self.min_samples_split,
