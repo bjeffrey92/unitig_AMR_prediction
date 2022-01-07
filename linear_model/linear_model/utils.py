@@ -1,4 +1,5 @@
 import os
+import pickle
 from functools import lru_cache
 from dataclasses import dataclass
 import nptyping
@@ -164,6 +165,11 @@ def load_adjacency_matrix(data_dir, degree_normalised=False):
         adj = torch.load(os.path.join(data_dir, "unitig_adjacency_tensor.pt"))
     adj = adj.coalesce()
     return adj
+
+
+def load_adjacency_dictionary(data_dir):
+    with open(os.path.join(data_dir, "adjacency_dictionary.pkl"), "rb") as a:
+        return pickle.load(a)
 
 
 @lru_cache()
