@@ -9,7 +9,7 @@ import numpy as np
 import networkx as nx
 import pickle
 from itertools import compress
-from torch_sparse import SparseTensor
+
 from scipy.sparse import identity, csr_matrix
 
 logging.basicConfig()
@@ -64,22 +64,13 @@ def parse_graph_adj_matrix(edges_file, nodes_file, mapping_dict, norm=True):
     return adj_matrix
 
 
-def convert_to_tensor(matrix, torch_sparse_coo=True):
-
+def convert_to_tensor(matrix):
     shape = matrix.shape
-
     row = torch.LongTensor(matrix.row)
     col = torch.LongTensor(matrix.col)
     value = torch.Tensor(matrix.data)
 
-    sparse_tensor = SparseTensor(
-        row=row, col=col, value=value, sparse_sizes=shape
-    )
-
-    if torch_sparse_coo:
-        return sparse_tensor.to_torch_sparse_coo_tensor()
-    else:
-        return sparse_tensor
+    return torch.sparse_coo_tensor(torch.stack((row, col)), value, shape)
 
 
 def parse_metadata(metadata_file, outcome_column):
@@ -110,9 +101,7 @@ def get_unitigs_from_gwas(
     ]  # lrt-pvalue is population adjusted p value
 
     graph_nodes = pd.read_csv(graph_nodes_file, sep="\t", header=None)
-    gwas_node_labels = graph_nodes.merge(
-        unitigs, left_on=1, right_on="variant"
-    )[0]
+    gwas_node_labels = graph_nodes.merge(unitigs, left_on=1, right_on="variant")[0]
 
     # get n step neighbours of each gwas node if not already included
     if neighbours:
@@ -180,23 +169,19 @@ def split_training_and_testing(
         for c in clade_freq:
             c_training_n = round(clade_freq[c] * training_split)
             c_samples = metadata[metadata.Clade == c].index.to_list()
-            training_indices += [
-                header.index(i) for i in c_samples[:c_training_n]
-            ]
-            testing_indices += [
-                header.index(i) for i in c_samples[c_training_n:]
-            ]
+            training_indices += [header.index(i) for i in c_samples[:c_training_n]]
+            testing_indices += [header.index(i) for i in c_samples[c_training_n:]]
             training_n = len(training_indices)
             testing_n = len(testing_indices)
 
         # memory allocation
         header_array = np.array(header)
-        training_rows = [
-            header[:1] + header_array[training_indices].tolist()
-        ] + ([[None] * (training_n + 1)] * num_unitigs)
-        testing_rows = [
-            header[:1] + header_array[testing_indices].tolist()
-        ] + ([[None] * (testing_n + 1)] * num_unitigs)
+        training_rows = [header[:1] + header_array[training_indices].tolist()] + (
+            [[None] * (training_n + 1)] * num_unitigs
+        )
+        testing_rows = [header[:1] + header_array[testing_indices].tolist()] + (
+            [[None] * (testing_n + 1)] * num_unitigs
+        )
 
         i = 1
         j = 1
@@ -254,9 +239,7 @@ def load_features(rtab_file, mapping_dict, adj_tensor):
         i = 0
         for row in reader:
             graph_nodes = mapping_dict[row[0]]
-            for j in range(
-                1, len(row)
-            ):  # first element of row is unitig number
+            for j in range(1, len(row)):  # first element of row is unitig number
                 if row[j] == "1":
                     for node in graph_nodes:
                         x_idx.append(j - 1)
@@ -315,12 +298,10 @@ def filter_unitigs(training_features, testing_features, adj):
     )
 
     # sequential merges to map graph nodes to position in the features matrix
-    merged_df = df.merge(
-        present_unitigs_df, left_on="x", right_on="graph_node"
-    )[["x", "y", "unitig_no", "values"]]
-    merged_df = merged_df.merge(
-        present_unitigs_df, left_on="y", right_on="graph_node"
-    )
+    merged_df = df.merge(present_unitigs_df, left_on="x", right_on="graph_node")[
+        ["x", "y", "unitig_no", "values"]
+    ]
+    merged_df = merged_df.merge(present_unitigs_df, left_on="y", right_on="graph_node")
 
     # build new adjacency tensor
     indices = torch.FloatTensor(
@@ -337,12 +318,8 @@ def filter_unitigs(training_features, testing_features, adj):
     filtered_testing_features = torch.stack(
         [testing_features_trans[i] for i in present_unitigs]
     )
-    filtered_training_features = filtered_training_features.transpose(
-        0, 1
-    ).to_sparse()
-    filtered_testing_features = filtered_testing_features.transpose(
-        0, 1
-    ).to_sparse()
+    filtered_training_features = filtered_training_features.transpose(0, 1).to_sparse()
+    filtered_testing_features = filtered_testing_features.transpose(0, 1).to_sparse()
 
     return adj_tensor, filtered_training_features, filtered_testing_features
 
@@ -360,9 +337,7 @@ def get_distances(adj, n=5):
     G.add_nodes_from(node_list)
     adj = adj.coalesce()
     indices = adj.indices().tolist()
-    edge_list = [
-        (indices[0][i], indices[1][i]) for i in range(len(indices[0]))
-    ]
+    edge_list = [(indices[0][i], indices[1][i]) for i in range(len(indices[0]))]
     G.add_edges_from(edge_list)
 
     # shorted distance between each pair of connected nodes
@@ -373,8 +348,7 @@ def get_distances(adj, n=5):
 
     # return as dictionary keeping only distance of max n steps
     return {
-        node: _max_n_steps(distances, n)
-        for node, distances in shortest_path_lengths
+        node: _max_n_steps(distances, n) for node, distances in shortest_path_lengths
     }
 
 
@@ -412,15 +386,11 @@ def save_data(
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
 
-    torch.save(
-        training_features, os.path.join(out_dir, "training_features.pt")
-    )
+    torch.save(training_features, os.path.join(out_dir, "training_features.pt"))
     torch.save(testing_features, os.path.join(out_dir, "testing_features.pt"))
     torch.save(training_labels, os.path.join(out_dir, "training_labels.pt"))
     torch.save(testing_labels, os.path.join(out_dir, "testing_labels.pt"))
-    torch.save(
-        adjacency_matrix, os.path.join(out_dir, "unitig_adjacency_tensor.pt")
-    )
+    torch.save(adjacency_matrix, os.path.join(out_dir, "unitig_adjacency_tensor.pt"))
 
     if distances is not None:
         with open(os.path.join(out_dir, "distances_dict.pkl"), "wb") as a:
@@ -429,18 +399,16 @@ def save_data(
     training_metadata.to_csv(
         os.path.join(out_dir, "training_metadata.csv"), index=False
     )
-    testing_metadata.to_csv(
-        os.path.join(out_dir, "testing_metadata.csv"), index=False
-    )
+    testing_metadata.to_csv(os.path.join(out_dir, "testing_metadata.csv"), index=False)
 
 
 if __name__ == "__main__":
 
-    edges_file = "data/gonno_unitigs/graph.edges.dbg"
-    nodes_file = "data/gonno_unitigs/graph.nodes"
-    unique_rows_file = "data/gonno_unitigs/unitigs.unique_rows_to_all_rows.txt"
-    rtab_file = "data/gonno_unitigs/unitigs.unique_rows.Rtab"  # to filter unitigs based on frequency
-    metadata_file = "data/filtered_metadata.csv"
+    edges_file = "data/gonno/gonno_unitigs/graph.edges.dbg"
+    nodes_file = "data/gonno/gonno_unitigs/graph.nodes"
+    unique_rows_file = "data/gonno/gonno_unitigs/unitigs.unique_rows_to_all_rows.txt"
+    rtab_file = "data/gonno/gonno_unitigs/unitigs.unique_rows.Rtab"  # to filter unitigs based on frequency
+    metadata_file = "data/gonno/filtered_metadata.csv"
     outcome_columns = [
         "log2_azm_mic",
         "log2_cfx_mic",
