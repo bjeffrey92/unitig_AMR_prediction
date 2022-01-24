@@ -10,18 +10,22 @@ import pandas as pd
 import numpy as np
 
 
+def _load_data(data_dir, fname_prefix):
+    features = torch.load(os.path.join(data_dir, f"{fname_prefix}_features.pt"))
+    labels = torch.load(os.path.join(data_dir, f"{fname_prefix}_labels.pt"))
+    if features.is_sparse:
+        features = features.to_dense()
+    return features, labels
+
+
 @lru_cache(maxsize=1)
 def load_training_data(data_dir):
-    features = torch.load(os.path.join(data_dir, "training_features.pt"))
-    labels = torch.load(os.path.join(data_dir, "training_labels.pt"))
-    return features.to_dense(), labels
+    return _load_data(data_dir, "training")
 
 
 @lru_cache(maxsize=1)
 def load_testing_data(data_dir):
-    features = torch.load(os.path.join(data_dir, "testing_features.pt"))
-    labels = torch.load(os.path.join(data_dir, "testing_labels.pt"))
-    return features.to_dense(), labels
+    return _load_data(data_dir, "testing")
 
 
 @lru_cache(maxsize=1)
@@ -42,10 +46,10 @@ def train_test_validate_split(
         left_out_clades = [left_out_clades]
 
     training_indices = training_metadata.loc[
-        training_metadata.clusters.isin(left_out_clades)
+        ~training_metadata.clusters.isin(left_out_clades)
     ].index
     testing_indices = testing_metadata.loc[
-        testing_metadata.clusters.isin(left_out_clades)
+        ~testing_metadata.clusters.isin(left_out_clades)
     ].index
     validation_indices_1 = training_metadata.loc[
         training_metadata.clusters.isin(left_out_clades)

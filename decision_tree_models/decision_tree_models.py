@@ -174,6 +174,7 @@ def leave_one_out_CV(
 
     n_splits = max([n_splits, len(clades)])
     clade_groups = [list(i) for i in np.array_split(clades, n_splits)]
+    clade_groups = [i for i in clade_groups if len(i) > 0]
 
     results_dict = {}
     for left_out_clade in clade_groups:
