@@ -1,16 +1,17 @@
-import math
-import logging
 import csv
-import pandas as pd
-import tempfile
-import torch
+import logging
+import math
 import os
-import numpy as np
-import networkx as nx
 import pickle
+import sys
+import tempfile
 from itertools import compress
 
-from scipy.sparse import identity, csr_matrix
+import networkx as nx
+import numpy as np
+import pandas as pd
+import torch
+from scipy.sparse import csr_matrix, identity
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -383,38 +384,38 @@ def save_data(
     if gwas_selections:
         save_dir = os.path.join(save_dir, "gwas_filtered")
 
-    if not os.path.isdir(out_dir):
-        os.makedirs(out_dir)
+    if not os.path.isdir(save_dir):
+        os.makedirs(save_dir)
 
-    torch.save(training_features, os.path.join(out_dir, "training_features.pt"))
-    torch.save(testing_features, os.path.join(out_dir, "testing_features.pt"))
-    torch.save(training_labels, os.path.join(out_dir, "training_labels.pt"))
-    torch.save(testing_labels, os.path.join(out_dir, "testing_labels.pt"))
-    torch.save(adjacency_matrix, os.path.join(out_dir, "unitig_adjacency_tensor.pt"))
+    torch.save(training_features, os.path.join(save_dir, "training_features.pt"))
+    torch.save(testing_features, os.path.join(save_dir, "testing_features.pt"))
+    torch.save(training_labels, os.path.join(save_dir, "training_labels.pt"))
+    torch.save(testing_labels, os.path.join(save_dir, "testing_labels.pt"))
+    torch.save(adjacency_matrix, os.path.join(save_dir, "unitig_adjacency_tensor.pt"))
 
     if distances is not None:
-        with open(os.path.join(out_dir, "distances_dict.pkl"), "wb") as a:
+        with open(os.path.join(save_dir, "distances_dict.pkl"), "wb") as a:
             pickle.dump(distances, a)
 
     training_metadata.to_csv(
-        os.path.join(out_dir, "training_metadata.csv"), index=False
+        os.path.join(save_dir, "training_metadata.csv"), index=False
     )
-    testing_metadata.to_csv(os.path.join(out_dir, "testing_metadata.csv"), index=False)
+    testing_metadata.to_csv(os.path.join(save_dir, "testing_metadata.csv"), index=False)
 
 
 if __name__ == "__main__":
 
-    edges_file = "data/gonno/gonno_unitigs/graph.edges.dbg"
-    nodes_file = "data/gonno/gonno_unitigs/graph.nodes"
-    unique_rows_file = "data/gonno/gonno_unitigs/unitigs.unique_rows_to_all_rows.txt"
-    rtab_file = "data/gonno/gonno_unitigs/unitigs.unique_rows.Rtab"  # to filter unitigs based on frequency
-    metadata_file = "data/gonno/filtered_metadata.csv"
-    outcome_columns = [
-        "log2_azm_mic",
-        "log2_cfx_mic",
-        "log2_cip_mic",
-        "log2_cro_mic",
-    ]
+    unitigs_dir = sys.argv[1]
+    metadata_file = sys.argv[2]
+    out_dir = sys.argv[3]
+    outcome_columns = sys.argv[4:]
+
+    edges_file = os.path.join(unitigs_dir, "graph.edges.dbg")
+    nodes_file = os.path.join(unitigs_dir, "graph.nodes")
+    unique_rows_file = os.path.join(unitigs_dir, "unitigs.unique_rows_to_all_rows.txt")
+    rtab_file = os.path.join(
+        unitigs_dir, "unitigs.unique_rows.Rtab"
+    )  # to filter unitigs based on frequency
 
     logging.info("Mapping pattern ids to graph nodes")
     # dicts will contain all intermediate frequency graph nodes mapped to their pattern id
@@ -458,7 +459,7 @@ if __name__ == "__main__":
                 training_rtab_file,
                 testing_rtab_file,
                 metadata,
-                freq_filt=(0.05, 0.95),
+                freq_filt=(0, 1),
                 gwas_selections=gwas_selections,
             )
 
@@ -485,7 +486,6 @@ if __name__ == "__main__":
             training_labels = load_labels(training_metadata, outcome_column)
             testing_labels = load_labels(testing_metadata, outcome_column)
 
-        out_dir = os.path.join("data/model_inputs/freq_5_95", outcome_column)
         save_data(
             out_dir,
             training_features,
