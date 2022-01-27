@@ -4,6 +4,7 @@ import logging
 import warnings
 from functools import partial
 
+import numpy as np
 from numpy import sort, array_equal
 from sklearn.linear_model import ElasticNet
 from sklearn.exceptions import ConvergenceWarning
@@ -77,21 +78,15 @@ def train_evaluate(
 
     if validation_features is None:
         testing_predictions = reg.predict(testing_features)
-        testing_loss = float(
-            mean_squared_error(testing_labels, testing_predictions)
-        )
+        testing_loss = float(mean_squared_error(testing_labels, testing_predictions))
         return -testing_loss
     else:
         training_predictions = reg.predict(training_features)
         testing_predictions = reg.predict(testing_features)
         validation_predictions = reg.predict(validation_features)
 
-        training_accuracy = mean_acc_per_bin(
-            training_predictions, training_labels
-        )
-        testing_accuracy = mean_acc_per_bin(
-            testing_predictions, testing_labels
-        )
+        training_accuracy = mean_acc_per_bin(training_predictions, training_labels)
+        testing_accuracy = mean_acc_per_bin(testing_predictions, testing_labels)
         validation_accuracy = mean_acc_per_bin(
             validation_predictions, validation_labels
         )
@@ -108,12 +103,8 @@ def train_evaluate(
             training_accuracy=training_accuracy,
             testing_accuracy=testing_accuracy,
             validation_accuracy=validation_accuracy,
-            training_MSE=mean_squared_error(
-                training_labels, training_predictions
-            ),
-            testing_MSE=mean_squared_error(
-                testing_labels, testing_predictions
-            ),
+            training_MSE=mean_squared_error(training_labels, training_predictions),
+            testing_MSE=mean_squared_error(testing_labels, testing_predictions),
             validation_MSE=mean_squared_error(
                 validation_labels, validation_predictions
             ),
@@ -129,19 +120,25 @@ def train_evaluate(
 
 
 def leave_one_out_CV(
-    training_data, testing_data, training_metadata, testing_metadata, adj=None
+    training_data,
+    testing_data,
+    training_metadata,
+    testing_metadata,
+    adj=None,
+    n_splits=6,
 ):
 
-    clades = sort(training_metadata.clusters.unique())
+    clades = np.sort(training_metadata.clusters.unique())
     assert array_equal(
         sort(clades), sort(testing_metadata.clusters.unique())
     ), "Different clades found in training and testing metadata"
 
+    clade_groups = [list(i) for i in np.array_split(clades, n_splits)]
+    clade_groups = [i for i in clade_groups if len(i) > 0]
+
     results_dict = {}
-    for left_out_clade in clades:
-        logging.info(
-            f"Formatting data for model with clade {left_out_clade} left out"
-        )
+    for left_out_clade in clade_groups:
+        logging.info(f"Formatting data for model with clade {left_out_clade} left out")
         input_data = train_test_validate_split(
             training_data,
             testing_data,
@@ -174,7 +171,7 @@ def leave_one_out_CV(
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer.maximize(n_iter=10)
+        optimizer.maximize(init_points=3, n_iter=3)
 
         logging.info(
             "Optimization complete, extracting metrics for best hyperparameter \
@@ -193,9 +190,7 @@ def leave_one_out_CV(
 def save_output(results_dict, results_dir, outcome):
     if not os.path.exists(results_dir):
         os.makedirs(results_dir)
-    fname = os.path.join(
-        results_dir, outcome + "_CV_elastic_net_predictions.pkl"
-    )
+    fname = os.path.join(results_dir, outcome + "_CV_elastic_net_predictions.pkl")
     with open(fname, "wb") as a:
         pickle.dump(results_dict, a)
 
@@ -206,11 +201,12 @@ def main(convolve=False):
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         logging.info(f"Fitting models with {outcome}")
-        data_dir = os.path.join(root_dir, outcome, "gwas_filtered")
-        results_dir = (
-            "linear_model/results/elastic_net_results/gwas_filtered/"
-            + "cluster_wise_CV"
-        )
+        results_dir = "linear_model/results/elastic_net_results/cluster_wise_CV"
+        data_dir = os.path.join(root_dir, outcome)
+        # results_dir = (
+        #     "linear_model/results/elastic_net_results/gwas_filtered/"
+        #     + "cluster_wise_CV"
+        # )
         if convolve:
             results_dir = os.path.join(results_dir, "convolved")
 
