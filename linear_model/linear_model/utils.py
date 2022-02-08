@@ -3,7 +3,7 @@ import pickle
 from functools import lru_cache
 from dataclasses import dataclass
 import nptyping
-from typing import Dict, Any, Union, List
+from typing import Dict, Any, Union, List, Tuple
 
 import torch
 import pandas as pd
@@ -35,29 +35,48 @@ def load_metadata(data_dir):
     return training_metadata, testing_metadata
 
 
-def train_test_validate_split(
-    training_data,
-    testing_data,
-    training_metadata,
-    testing_metadata,
-    left_out_clades: Union[List, int],
-):
-    if isinstance(left_out_clades, int):
-        left_out_clades = [left_out_clades]
+def numpy_train_test_validate_split(
+    training_data: List[np.ndarray],
+    testing_data: List[np.ndarray],
+    training_indices: pd.Int64Index,
+    testing_indices: pd.Int64Index,
+    validation_indices_1: pd.Int64Index,
+    validation_indices_2: pd.Int64Index,
+) -> Tuple:
+    training_features = training_data[0][training_indices]
+    training_labels = training_data[1][training_indices]
+    testing_features = testing_data[0][testing_indices]
+    testing_labels = testing_data[1][testing_indices]
+    validation_features = np.concatenate(
+        [
+            training_data[0][validation_indices_1],
+            testing_data[0][validation_indices_2],
+        ]
+    )
+    validation_labels = np.concatenate(
+        [
+            training_data[1][validation_indices_1],
+            testing_data[1][validation_indices_2],
+        ]
+    )
+    return (
+        training_features,
+        training_labels,
+        testing_features,
+        testing_labels,
+        validation_features,
+        validation_labels,
+    )
 
-    training_indices = training_metadata.loc[
-        ~training_metadata.clusters.isin(left_out_clades)
-    ].index
-    testing_indices = testing_metadata.loc[
-        ~testing_metadata.clusters.isin(left_out_clades)
-    ].index
-    validation_indices_1 = training_metadata.loc[
-        training_metadata.clusters.isin(left_out_clades)
-    ].index  # extract data from training set
-    validation_indices_2 = testing_metadata.loc[
-        testing_metadata.clusters.isin(left_out_clades)
-    ].index  # extract data from testing set
 
+def torch_train_test_validate_split(
+    training_data: List[torch.Tensor],
+    testing_data: List[torch.Tensor],
+    training_indices: pd.Int64Index,
+    testing_indices: pd.Int64Index,
+    validation_indices_1: pd.Int64Index,
+    validation_indices_2: pd.Int64Index,
+) -> Tuple:
     training_features = torch.index_select(
         training_data[0], 0, torch.as_tensor(training_indices)
     )
@@ -99,6 +118,52 @@ def train_test_validate_split(
         validation_features,
         validation_labels,
     )
+
+
+def train_test_validate_split(
+    training_data: List,
+    testing_data: List,
+    training_metadata: pd.DataFrame,
+    testing_metadata: pd.DataFrame,
+    left_out_clades: Union[List, int],
+    torch_or_numpy: str = "torch",
+) -> Tuple:
+    if isinstance(left_out_clades, int):
+        left_out_clades = [left_out_clades]
+
+    training_indices = training_metadata.loc[
+        ~training_metadata.clusters.isin(left_out_clades)
+    ].index
+    testing_indices = testing_metadata.loc[
+        ~testing_metadata.clusters.isin(left_out_clades)
+    ].index
+    validation_indices_1 = training_metadata.loc[
+        training_metadata.clusters.isin(left_out_clades)
+    ].index  # extract data from training set
+    validation_indices_2 = testing_metadata.loc[
+        testing_metadata.clusters.isin(left_out_clades)
+    ].index  # extract data from testing set
+
+    if torch_or_numpy == "torch":
+        return torch_train_test_validate_split(
+            training_data,
+            testing_data,
+            training_indices,
+            testing_indices,
+            validation_indices_1,
+            validation_indices_2,
+        )
+    elif torch_or_numpy == "numpy":
+        return numpy_train_test_validate_split(
+            training_data,
+            testing_data,
+            training_indices,
+            testing_indices,
+            validation_indices_1,
+            validation_indices_2,
+        )
+    else:
+        raise ValueError("torch_or_numpy must be either 'torch' or 'numpy'")
 
 
 def accuracy(

@@ -24,7 +24,7 @@ from linear_model.utils import (
 
 
 def fit_model(training_features, training_labels, alpha, l1_ratio):
-    max_iter = 100000
+    max_iter = 50000
     fitted = False
     while not fitted:
         with warnings.catch_warnings(record=True) as w:
@@ -47,7 +47,7 @@ def fit_model(training_features, training_labels, alpha, l1_ratio):
                     f"Failed to converge with max_iter = {max_iter}, \
                 adding 100000 more"
                 )
-                max_iter += 100000
+                max_iter += 50000
             else:
                 fitted = True
 
@@ -145,6 +145,7 @@ def leave_one_out_CV(
             training_metadata,
             testing_metadata,
             left_out_clade,
+            torch_or_numpy="numpy",
         )
 
         (
@@ -177,7 +178,7 @@ def leave_one_out_CV(
             "Optimization complete, extracting metrics for best hyperparameter \
         combination"
         )
-        results_dict[left_out_clade] = train_evaluate(
+        results_dict[str(left_out_clade)] = train_evaluate(
             *input_data,
             adj,
             optimizer.max["params"]["alpha"],
@@ -195,8 +196,8 @@ def save_output(results_dict, results_dir, outcome):
         pickle.dump(results_dict, a)
 
 
-def main(convolve=False):
-    root_dir = "data/gonno/model_inputs/freq_5_95/"
+def main(convolve=False, results_dir_suffix=""):
+    root_dir = "data/gonno/model_inputs/unfiltered/"
 
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
@@ -210,9 +211,19 @@ def main(convolve=False):
         if convolve:
             results_dir = os.path.join(results_dir, "convolved")
 
+        if results_dir.endswith("/"):
+            results_dir = results_dir[:-1]
+        results_dir += results_dir_suffix
+
         training_data = load_training_data(data_dir)
         testing_data = load_testing_data(data_dir)
         training_metadata, testing_metadata = load_metadata(data_dir)
+
+        # fitting elastic net is more efficient with fortran contigous array
+        # https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html#sklearn.linear_model.ElasticNet.fit
+        training_data = [np.array(i, order="F") for i in training_data]
+        testing_data = [np.array(i, order="F") for i in testing_data]
+
         if convolve:
             adj = load_adjacency_matrix(data_dir)
         else:
@@ -233,4 +244,4 @@ if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    main()
+    main(results_dir_suffix="unfiltered")
