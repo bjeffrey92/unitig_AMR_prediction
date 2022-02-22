@@ -45,7 +45,20 @@ def make_MIC_numeric(x: str) -> float:
 
 def parse_MIC_data(df: pd.DataFrame, abs_list: List[str]) -> pd.DataFrame:
     df = df.assign(**{i: df[i].apply(make_MIC_numeric) for i in abs_list})
-    return df.assign(**{i: df[i].apply(np.log2) for i in abs_list})
+    return df.assign(**{f"log2_{i}_mic": df[i].apply(np.log2) for i in abs_list})
+
+
+def _assign_clade(family: str) -> int:
+    if family == "4.3":
+        return 1
+    elif family == "4.1":
+        return 2
+    else:
+        return 3
+
+
+def group_into_clades(df: pd.DataFrame) -> pd.DataFrame:
+    return df.assign(Clade=df["Phylogenetic lineage"].apply(_assign_clade))
 
 
 def download_single_assembly(acc: str) -> bool:
@@ -85,4 +98,6 @@ if __name__ == "__main__":
     df = load_raw_data(first_line_abs)
     df = df.loc[df.BioProject == "PRJNA343736\xa0"]  # only this proj has assemblies
     df = parse_MIC_data(df, first_line_abs)
+    df = group_into_clades(df)
+    df = df.assign(id=df["WGSAccessionNumber OR Run Accession"])
     df.to_csv("data/tb/filtered_accessions.tsv", sep="\t", index=False)
