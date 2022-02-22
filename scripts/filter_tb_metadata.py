@@ -4,10 +4,14 @@ https://www.nature.com/articles/s41467-019-10110-6#Tab1
 """
 
 import logging
+import shutil
+import urllib.request as request
+from os import path
+from contextlib import closing
 from typing import List
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -42,6 +46,38 @@ def make_MIC_numeric(x: str) -> float:
 def parse_MIC_data(df: pd.DataFrame, abs_list: List[str]) -> pd.DataFrame:
     df = df.assign(**{i: df[i].apply(make_MIC_numeric) for i in abs_list})
     return df.assign(**{i: df[i].apply(np.log2) for i in abs_list})
+
+
+def download_single_assembly(acc: str) -> bool:
+    try:
+        if acc.startswith("M"):
+            fasta_name = f"{acc[:4]}01.fasta.gz"
+            save_name = f"{acc}.fasta.gz"
+            ftp_path = f"ftp://ftp.ebi.ac.uk/pub/databases/ena/wgs/public/{acc[:3].lower()}/{fasta_name}"
+        elif acc.startswith("C"):
+            save_name = f"{acc}.fasta"
+            ftp_path = (
+                f"https://www.ebi.ac.uk/ena/browser/api/fasta/{acc}.1?download=true"
+            )
+        else:
+            raise ValueError(f"Unknown accession type: {acc}")
+        destination_dir = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/data/tb/assemblies"
+        destination = path.join(destination_dir, save_name)
+        with closing(request.urlopen(ftp_path)) as r:
+            with open(destination, "wb") as f:
+                shutil.copyfileobj(r, f)
+        return True
+    except Exception as e:
+        logging.warning(e)
+        return False
+
+
+def download_assemblies(df: pd.DataFrame):
+    success = df["WGSAccessionNumber OR Run Accession"].apply(download_single_assembly)
+    if not success.all():
+        logging.error(f"Failed to download {(~success).sum()} samples")
+    else:
+        logging.info("Successfully downloaded all samples")
 
 
 if __name__ == "__main__":
