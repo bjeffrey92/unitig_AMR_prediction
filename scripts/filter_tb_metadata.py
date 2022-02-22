@@ -19,6 +19,7 @@ def load_raw_data(abs_list: List[str]) -> pd.DataFrame:
     df = df.loc[
         (df["Country of Isolation"] == "Peru") & (df["DST or MIC"] == "MIC")
     ]  # majority of samples from peru
+    df = df.loc[~df["Phylogenetic lineage"].isna()]
     samples_missing_tests = df[abs_list].isna().any(axis=1)
     logging.warning(f"{samples_missing_tests.sum()}/{len(df)} samples will be dropped")
     return df.loc[~samples_missing_tests]
@@ -40,9 +41,12 @@ def make_MIC_numeric(x: str) -> float:
 
 def parse_MIC_data(df: pd.DataFrame, abs_list: List[str]) -> pd.DataFrame:
     df = df.assign(**{i: df[i].apply(make_MIC_numeric) for i in abs_list})
-    df = df.assign(**{i: df[i].apply(np.log2) for i in abs_list})
+    return df.assign(**{i: df[i].apply(np.log2) for i in abs_list})
 
 
 if __name__ == "__main__":
     first_line_abs = ["INH", "PZA", "EMB", "RIF"]
     df = load_raw_data(first_line_abs)
+    df = df.loc[df.BioProject == "PRJNA343736\xa0"]  # only this proj has assemblies
+    df = parse_MIC_data(df, first_line_abs)
+    df.to_csv("data/tb/filtered_accessions.tsv", sep="\t", index=False)
