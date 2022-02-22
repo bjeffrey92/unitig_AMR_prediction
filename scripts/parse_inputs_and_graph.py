@@ -486,8 +486,9 @@ if __name__ == "__main__":
             training_labels = load_labels(training_metadata, outcome_column)
             testing_labels = load_labels(testing_metadata, outcome_column)
 
+        save_dir = os.path.join(out_dir, outcome_column)
         save_data(
-            out_dir,
+            save_dir,
             training_features,
             testing_features,
             training_labels,
