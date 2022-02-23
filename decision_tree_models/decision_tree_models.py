@@ -167,7 +167,16 @@ def leave_one_out_CV(
     convolve_features: bool = False,
     n_splits: int = 12,
 ) -> Dict:
-    clades = np.sort(training_metadata.clusters.unique())
+    try:
+        clades = np.sort(training_metadata.clusters.unique())
+    except AttributeError:
+        logging.warning(
+            "clusters column not found in metadata, attempting to use 'Clade' instead"
+        )
+        training_metadata = training_metadata.assign(clusters=training_metadata.Clade)
+        testing_metadata = testing_metadata.assign(clusters=testing_metadata.Clade)
+        clades = np.sort(training_metadata.clusters.unique())
+
     assert np.array_equal(
         np.sort(clades), np.sort(testing_metadata.clusters.unique())
     ), "Different clades found in training and testing metadata"
@@ -286,9 +295,10 @@ def save_output(results_dict: Dict, results_dir: str, outcome: str, model_type: 
 def main(
     outcome: str,
     root_dir: str,
+    species: str,
     model_type: str = "random_forest",
     convolve: bool = False,
-    gwas_filtered: bool = True,
+    gwas_filtered: bool = False,
     results_dir_suffix: str = "",
 ):
 
@@ -297,12 +307,12 @@ def main(
     if gwas_filtered:
         data_dir = os.path.join(data_dir, "gwas_filtered")
         results_dir = os.path.join(
-            f"decision_tree_models/results/{model_type}/gwas_filtered/",
+            f"decision_tree_models/results/{species}/{model_type}/gwas_filtered/",
             "cluster_wise_CV",
         )
     else:
         results_dir = os.path.join(
-            f"decision_tree_models/results/{model_type}", "cluster_wise_CV"
+            f"decision_tree_models/results/{species}/{model_type}", "cluster_wise_CV"
         )
     if convolve:
         results_dir = os.path.join(results_dir, "convolved")
@@ -315,7 +325,13 @@ def main(
     testing_data = load_testing_data(data_dir)
     training_metadata, testing_metadata = load_metadata(data_dir)
     if model_type == "graph_rf":
-        adj = load_adjacency_dictionary(data_dir)
+        try:
+            adj = load_adjacency_dictionary(data_dir)
+        except FileNotFoundError:
+            adj_matrix = load_adjacency_matrix(data_dir)
+            adj = adj_matrix_to_dict(adj_matrix)
+            with open(os.path.join(data_dir, "adjacency_dictionary.pkl"), "wb") as a:
+                pickle.dump(adj, a)
     elif convolve:
         adj = load_adjacency_matrix(data_dir)
     else:
@@ -338,8 +354,8 @@ if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    root_dir = "data/gonno/model_inputs/unfiltered"
-    # root_dir = "data/gonno/model_inputs/freq_5_95/"
+    root_dir = "data/tb/model_inputs/"
+    species = "tb"
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
-        main(outcome, root_dir)
+        main(outcome, root_dir, species)
