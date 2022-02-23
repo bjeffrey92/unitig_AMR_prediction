@@ -8,7 +8,7 @@ import shutil
 import urllib.request as request
 from os import path
 from contextlib import closing
-from typing import List
+from typing import List, Union
 
 import numpy as np
 import pandas as pd
@@ -48,10 +48,10 @@ def parse_MIC_data(df: pd.DataFrame, abs_list: List[str]) -> pd.DataFrame:
     return df.assign(**{f"log2_{i}_mic": df[i].apply(np.log2) for i in abs_list})
 
 
-def _assign_clade(family: str) -> int:
-    if family == "4.3":
+def _assign_clade(family: Union[str, float]) -> int:
+    if family == 4.3:
         return 1
-    elif family == "4.1":
+    elif family == 4.1:
         return 2
     else:
         return 3
