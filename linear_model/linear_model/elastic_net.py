@@ -128,7 +128,16 @@ def leave_one_out_CV(
     n_splits=6,
 ):
 
-    clades = np.sort(training_metadata.clusters.unique())
+    try:
+        clades = np.sort(training_metadata.clusters.unique())
+    except AttributeError:
+        logging.warning(
+            "clusters column not found in metadata, attempting to use 'Clade' instead"
+        )
+        training_metadata = training_metadata.assign(clusters=training_metadata.Clade)
+        testing_metadata = testing_metadata.assign(clusters=testing_metadata.Clade)
+        clades = np.sort(training_metadata.clusters.unique())
+
     assert array_equal(
         sort(clades), sort(testing_metadata.clusters.unique())
     ), "Different clades found in training and testing metadata"
@@ -196,13 +205,13 @@ def save_output(results_dict, results_dir, outcome):
         pickle.dump(results_dict, a)
 
 
-def main(convolve=False, results_dir_suffix=""):
-    root_dir = "data/gonno/model_inputs/unfiltered/"
-
+def main(species, root_dir, convolve=False, results_dir_suffix=""):
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         logging.info(f"Fitting models with {outcome}")
-        results_dir = "linear_model/results/elastic_net_results/cluster_wise_CV"
+        results_dir = (
+            f"linear_model/results/{species}elastic_net_results/cluster_wise_CV"
+        )
         data_dir = os.path.join(root_dir, outcome)
         # results_dir = (
         #     "linear_model/results/elastic_net_results/gwas_filtered/"
@@ -243,5 +252,6 @@ def main(convolve=False, results_dir_suffix=""):
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
-
-    main(results_dir_suffix="unfiltered")
+    root_dir = "data/tb/model_inputs/"
+    species = "tb"
+    main(species, root_dir)
