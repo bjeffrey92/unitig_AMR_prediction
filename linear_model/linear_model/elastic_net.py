@@ -252,6 +252,6 @@ def main(species, root_dir, convolve=False, results_dir_suffix=""):
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
-    root_dir = "data/tb/model_inputs/"
-    species = "tb"
+    root_dir = "data/euscape/model_inputs/"
+    species = "kleb"
     main(species, root_dir)

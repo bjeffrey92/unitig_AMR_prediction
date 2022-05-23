@@ -223,12 +223,12 @@ def leave_one_out_CV(
                 "n_trees": [10, 1000],
                 "max_depth": [5, 20],
                 "min_samples_split": [5, 25],
-                "min_purity_increase": [0.01, 0.3],
+                "min_purity_increase": [0.01, 0.3],  # type: ignore
             }
             if model_type == "graph_rf":
                 pbounds = {
                     **pbounds,
-                    "jump_probability": [0.01, 0.2],
+                    "jump_probability": [0.01, 0.2],  # type: ignore
                     "graph_steps": [1, 6],
                 }
         else:
