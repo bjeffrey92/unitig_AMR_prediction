@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import torch
 from scipy.sparse import csr_matrix, identity
+from tqdm import tqdm
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -186,8 +187,7 @@ def split_training_and_testing(
 
         i = 1
         j = 1
-        for row in reader:
-            print(f"\rprocessing {j} of {num_unitigs} unitigs", end="")
+        for row in tqdm(reader, desc="processing unitigs"):
             j += 1
 
             # skip if unitig not selected by gwas
@@ -205,7 +205,6 @@ def split_training_and_testing(
             testing_rows[i] = row[:1] + row_array[testing_indices].tolist()
 
             i += 1
-        print("", flush=True)
 
     with open(training_rtab_file, "w", newline="") as csvfile:
         writer = csv.writer(csvfile, delimiter="\t")
@@ -238,7 +237,7 @@ def load_features(rtab_file, mapping_dict, adj_tensor):
         values = []
 
         i = 0
-        for row in reader:
+        for row in tqdm(reader, f"processing {num_unitigs} unitigs"):
             graph_nodes = mapping_dict[row[0]]
             for j in range(1, len(row)):  # first element of row is unitig number
                 if row[j] == "1":
@@ -247,8 +246,6 @@ def load_features(rtab_file, mapping_dict, adj_tensor):
                         y_idx.append(int(node))
                         values.append(1)
             i += 1
-            print(f"\r{i}/{num_unitigs} unitigs processed", end="")
-        print("", flush=True)
 
     indices = torch.LongTensor([x_idx, y_idx])
     shape = (num_samples, adj_tensor.shape[1])
