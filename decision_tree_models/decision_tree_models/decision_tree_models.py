@@ -7,8 +7,8 @@ from functools import partial
 import numpy as np
 from bayes_opt import BayesianOptimization
 from sklearn.metrics import mean_squared_error
-from skranger.ensemble import RangerForestRegressor
-from xgboost import XGBRegressor
+# from skranger.ensemble import RangerForestRegressor
+# from xgboost import XGBRegressor
 
 from linear_model.utils import (
     load_training_data,
@@ -32,9 +32,7 @@ from decision_tree_models.julia_interface import (
 # from .utils import convert_adj_matrix, adj_matrix_to_dict
 from decision_tree_models.utils import adj_matrix_to_dict
 
-JL_ENV_PATH = (
-    "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/DecisionTree.jl"
-)
+JL_ENV_PATH = None
 DecisionTree, JLD = get_jl_modules(JL_ENV_PATH)
 
 
@@ -61,18 +59,18 @@ def fit_julia_rf(training_features, training_labels, **kwargs) -> julia_rf_model
     return reg
 
 
-def fit_xgboost(training_features, training_labels, **kwargs) -> XGBRegressor:
-    kwargs = {k: round(v) for k, v in kwargs.items()}
-    reg = XGBRegressor(**kwargs)
-    reg.fit(training_features, training_labels)
-    return reg
+# def fit_xgboost(training_features, training_labels, **kwargs) -> XGBRegressor:
+#     kwargs = {k: round(v) for k, v in kwargs.items()}
+#     reg = XGBRegressor(**kwargs)
+#     reg.fit(training_features, training_labels)
+#     return reg
 
 
-def fit_rf(training_features, training_labels, **kwargs) -> RangerForestRegressor:
-    kwargs = {k: round(v) for k, v in kwargs.items()}
-    reg = RangerForestRegressor(**kwargs)
-    reg.fit(training_features, training_labels)
-    return reg
+# def fit_rf(training_features, training_labels, **kwargs) -> RangerForestRegressor:
+#     kwargs = {k: round(v) for k, v in kwargs.items()}
+#     reg = RangerForestRegressor(**kwargs)
+#     reg.fit(training_features, training_labels)
+#     return reg
 
 
 def train_evaluate(
