@@ -1,6 +1,7 @@
 import pickle
 import os
 import logging
+import sys
 from typing import Dict
 from functools import partial
 
@@ -352,8 +353,9 @@ if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    root_dir = "data/tb/model_inputs/"
-    species = "tb"
+    root_dir = "data/euscape/model_inputs/"
+    species = "kleb"
+    model_type = sys.argv[1]
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
-        main(outcome, root_dir, species)
+        main(outcome, root_dir, species, model_type=model_type)
