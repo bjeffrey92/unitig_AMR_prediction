@@ -3,7 +3,7 @@ from os import environ
 from multiprocessing import cpu_count
 
 # needs to be set before starting julia
-environ["JULIA_NUM_THREADS"] = str(cpu_count() - 4)
+environ["JULIA_NUM_THREADS"] = str(cpu_count())
 
 from julia.api import Julia
 
@@ -13,10 +13,11 @@ from .utils import check_data_format
 
 
 @lru_cache()
-def get_jl_modules(env_path: str):
-    from julia import Pkg
+def get_jl_modules(env_path: str = None):
+    if env_path is not None:
+        from julia import Pkg
 
-    Pkg.activate(env_path)
+        Pkg.activate(env_path)
     from julia import DecisionTree
     from julia import JLD
 
