@@ -83,7 +83,7 @@ def train_evaluate(
         testing_loss = float(mean_squared_error(testing_labels, testing_predictions))
         if cache_dir is not None:
             params = {"alpha": alpha, "l1_ratio": l1_ratio}
-            result = {"testing_loss": testing_loss, "params": params}
+            result = {"testing_loss": -testing_loss, "params": params}
             fname = str(uuid4()) + ".pkl"
             with open(os.path.join(cache_dir, fname), "wb") as a:
                 pickle.dump(result, a)
@@ -134,6 +134,7 @@ def leave_one_out_CV(
     testing_metadata,
     adj=None,
     n_splits=6,
+    cache_dir=None,
 ):
 
     try:
@@ -183,6 +184,7 @@ def leave_one_out_CV(
             validation_features=None,
             validation_labels=None,
             adj=adj,
+            cache_dir=cache_dir,
         )
 
         logging.info("Optimizing hyperparameters")
@@ -202,6 +204,11 @@ def leave_one_out_CV(
             optimizer.max["params"]["l1_ratio"],
         )
 
+        if cache_dir is not None:
+            fname = f"results_left_out_clade_{left_out_clade}.pkl"
+            with open(os.path.join(cache_dir, fname), "wb") as a:
+                pickle.dump(results_dict[str(left_out_clade)], a)
+
     return results_dict
 
 
@@ -213,7 +220,7 @@ def save_output(results_dict, results_dir, outcome):
         pickle.dump(results_dict, a)
 
 
-def main(species, root_dir, convolve=False, results_dir_suffix=""):
+def main(species, root_dir, convolve=False, results_dir_suffix="", cache_dir=None):
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         logging.info(f"Fitting models with {outcome}")
@@ -252,6 +259,7 @@ def main(species, root_dir, convolve=False, results_dir_suffix=""):
             training_metadata,
             testing_metadata,
             adj=adj,
+            cache_dir=cache_dir,
         )
 
         save_output(results_dict, results_dir, outcome)
@@ -262,4 +270,5 @@ if __name__ == "__main__":
     logging.root.setLevel(logging.INFO)
     root_dir = "data/euscape/model_inputs/"
     species = "kleb"
-    main(species, root_dir)
+    cache_dir = None
+    main(species, root_dir, cache_dir=cache_dir)
