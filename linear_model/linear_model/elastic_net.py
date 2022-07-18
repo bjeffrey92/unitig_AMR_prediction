@@ -1,6 +1,7 @@
 import pickle
 import os
 import logging
+from uuid import uuid4
 import warnings
 from functools import partial
 
@@ -64,6 +65,7 @@ def train_evaluate(
     adj,
     alpha,
     l1_ratio,
+    cache_dir=None,
 ):
 
     logging.info(f"alpha = {alpha}, l1_ratio = {l1_ratio}")
@@ -79,6 +81,12 @@ def train_evaluate(
     if validation_features is None:
         testing_predictions = reg.predict(testing_features)
         testing_loss = float(mean_squared_error(testing_labels, testing_predictions))
+        if cache_dir is not None:
+            params = {"alpha": alpha, "l1_ratio": l1_ratio}
+            result = {"testing_loss": testing_loss, "params": params}
+            fname = str(uuid4()) + ".pkl"
+            with open(os.path.join(cache_dir, fname), "wb") as a:
+                pickle.dump(result, a)
         return -testing_loss
     else:
         training_predictions = reg.predict(training_features)
