@@ -283,5 +283,5 @@ if __name__ == "__main__":
     root_dir = "data/euscape/model_inputs/"
     species = "kleb"
     cache_dir = None
-    skip_clade_groups = []
+    skip_clade_groups = []  # type:ignore
     main(species, root_dir, cache_dir=cache_dir, skip_clade_groups=skip_clade_groups)
