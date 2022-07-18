@@ -135,6 +135,7 @@ def leave_one_out_CV(
     adj=None,
     n_splits=6,
     cache_dir=None,
+    skip_clade_groups=[],
 ):
 
     try:
@@ -153,6 +154,9 @@ def leave_one_out_CV(
 
     clade_groups = [list(i) for i in np.array_split(clades, n_splits)]
     clade_groups = [i for i in clade_groups if len(i) > 0]
+
+    for i in skip_clade_groups:
+        clade_groups.remove(i)
 
     results_dict = {}
     for left_out_clade in clade_groups:
@@ -220,7 +224,14 @@ def save_output(results_dict, results_dir, outcome):
         pickle.dump(results_dict, a)
 
 
-def main(species, root_dir, convolve=False, results_dir_suffix="", cache_dir=None):
+def main(
+    species,
+    root_dir,
+    convolve=False,
+    results_dir_suffix="",
+    cache_dir=None,
+    skip_clade_groups=[],
+):
     outcomes = os.listdir(root_dir)
     for outcome in outcomes:
         logging.info(f"Fitting models with {outcome}")
@@ -260,6 +271,7 @@ def main(species, root_dir, convolve=False, results_dir_suffix="", cache_dir=Non
             testing_metadata,
             adj=adj,
             cache_dir=cache_dir,
+            skip_clade_groups=skip_clade_groups,
         )
 
         save_output(results_dict, results_dir, outcome)
@@ -271,4 +283,5 @@ if __name__ == "__main__":
     root_dir = "data/euscape/model_inputs/"
     species = "kleb"
     cache_dir = None
-    main(species, root_dir, cache_dir=cache_dir)
+    skip_clade_groups = []
+    main(species, root_dir, cache_dir=cache_dir, skip_clade_groups=skip_clade_groups)
