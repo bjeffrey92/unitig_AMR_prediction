@@ -353,7 +353,7 @@ if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
 
-    root_dir = "data/euscape/model_inputs/"
+    root_dir = "unitig_AMR_prediction/data/euscape/model_inputs/"
     species = "kleb"
     model_type = sys.argv[1]
     outcomes = os.listdir(root_dir)
