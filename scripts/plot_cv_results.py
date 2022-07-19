@@ -37,9 +37,7 @@ def convert_to_dataframe_lasso(CV_results):
         df_dictionary["left_out_clade"].append(left_out_clade)
         df_dictionary["training_accuracy"].append(d[k]["training_accuracy"])
         df_dictionary["testing_accuracy"].append(d[k]["testing_accuracy"])
-        df_dictionary["validation_accuracy"].append(
-            d[k]["validation_accuracy"]
-        )
+        df_dictionary["validation_accuracy"].append(d[k]["validation_accuracy"])
 
     return pd.DataFrame(df_dictionary)
 
@@ -114,9 +112,7 @@ def _get_NN_results(data_dir, file_suffix=".tsv"):
 def get_SVR_results(dir_pattern):
     Abs = ["log2_azm_mic", "log2_cip_mic", "log2_cro_mic", "log2_cfx_mic"]
 
-    input_files = [
-        os.path.join(dir_pattern[0], Ab, dir_pattern[1]) for Ab in Abs
-    ]
+    input_files = [os.path.join(dir_pattern[0], Ab, dir_pattern[1]) for Ab in Abs]
 
     data_dict = {}
     for i in range(len(Abs)):
@@ -192,9 +188,7 @@ def bar_plot_of_results(data, filename):
 
     axs[n - 1].legend(loc="lower right")
     fig.text(0.5, 0.04, "Left Out Clade", ha="center")
-    fig.text(
-        0.04, 0.5, "Prediction Accuracy (%)", va="center", rotation="vertical"
-    )
+    fig.text(0.04, 0.5, "Prediction Accuracy (%)", va="center", rotation="vertical")
 
     fig.savefig(filename)
 
@@ -215,12 +209,11 @@ def box_plot_of_results(data, filename):
         df = df[["Train", "Test", "Validate"]]
         axs[n].boxplot(df, notch=False, labels=df.columns)
         axs[n].set_title(Ab.upper().split("_")[1])
+        axs[n].set(ylim=(0, 100))
         axs[n].tick_params(labelrotation=90)
         n += 1
 
-    fig.text(
-        0, 0.5, "Mean Accuracy per MIC Bin", va="center", rotation="vertical"
-    )
+    fig.text(0, 0.5, "Mean Accuracy per MIC Bin", va="center", rotation="vertical")
     fig.tight_layout()
 
     fig.savefig(filename)
@@ -246,6 +239,4 @@ if __name__ == "__main__":
         Ab: df.set_index("left_out_clade") for Ab, df in accuracy_data.items()
     }
 
-    box_plot_of_results(
-        accuracy_data, os.path.join(data_dir, "CV_accuracy.png")
-    )
+    box_plot_of_results(accuracy_data, os.path.join(data_dir, "CV_accuracy.png"))
