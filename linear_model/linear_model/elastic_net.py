@@ -280,8 +280,8 @@ def main(
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
-    root_dir = "data/euscape/model_inputs/"
+    root_dir = "unitig_AMR_prediction/data/euscape/model_inputs/"
     species = "kleb"
-    cache_dir = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/linear_model/cache/kleb_elastic_net"
+    cache_dir = "unitig_AMR_prediction/linear_model/cache/kleb_elastic_net"
     skip_clade_groups = [[1]]  # type:ignore
     main(species, root_dir, cache_dir=cache_dir, skip_clade_groups=skip_clade_groups)

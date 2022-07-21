@@ -1,11 +1,7 @@
-from functools import lru_cache, partial
-from multiprocessing import cpu_count, Pool
-from typing import Dict
+from functools import lru_cache
 
 import numpy as np
 from torch import Tensor
-
-from decision_tree_models.parallel_get_indices import get_indices_parallel
 
 
 @lru_cache(maxsize=1)
@@ -21,18 +17,6 @@ def check_data_format(data: np.ndarray) -> np.ndarray:
 
 
 @lru_cache(maxsize=1)
-def adj_matrix_to_dict(adj: Tensor, njobs: int = 1) -> Dict:
+def adj_matrix_to_dict(adj: Tensor):
     indices = convert_adj_matrix(adj)
-    if njobs == 1:
-        return {i: indices[1, indices[0] == i] for i in np.unique(indices[0])}
-
-    if njobs == -1:
-        njobs = cpu_count()
-
-    unique_0_indices = np.unique(indices[0])
-    array_chunks = np.array_split(unique_0_indices, njobs)
-
-    pool = Pool(njobs)
-    results = pool.map(partial(get_indices_parallel, indices=indices), array_chunks)
-
-    return {k: v for d in results for k, v in d.items()}
+    return {i: indices[1, indices[0] == i] for i in np.unique(indices[0])}
