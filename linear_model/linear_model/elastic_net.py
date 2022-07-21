@@ -139,6 +139,7 @@ def initialize_optimizer(
     for hp_run in hp_run_files:
         with open(hp_run, "rb") as a:
             hp_run_result = pickle.load(a)
+        logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
         optimizer = optimizer.register(
             hp_run_result["params"], hp_run_result["testing_loss"]
         )
@@ -216,15 +217,19 @@ def leave_one_out_CV(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
         optimizer, n_prior_runs = initialize_optimizer(optimizer, cache_dir)
+        logging.info(f"Initialized with {n_prior_runs} prior runs")
+
         init_points -= n_prior_runs
         if init_points < 0:
             n_iter += init_points
             init_points = max(0, init_points)
             n_iter = max(0, n_iter)
-
         if n_iter < 0:
             raise Exception("n_iter must be greater than 0")
 
+        logging.info(
+            f"Hyperparameter optimization running with {init_points} initialization points for {n_iter} iterations"
+        )
         optimizer.maximize(init_points=init_points, n_iter=n_iter)
 
         logging.info(

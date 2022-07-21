@@ -1,6 +1,7 @@
 import pickle
 import os
 import logging
+from typing import Tuple
 from uuid import uuid4
 import warnings
 from functools import partial
@@ -84,12 +85,9 @@ def train_evaluate(
         if cache_dir is not None:
             params = {"alpha": alpha, "l1_ratio": l1_ratio}
             result = {"testing_loss": -testing_loss, "params": params}
-            fname = str(uuid4()) + ".pkl"
+            fname = f"hyperparam_test_{uuid4()}.pkl"
             with open(os.path.join(cache_dir, fname), "wb") as a:
                 pickle.dump(result, a)
-            logging.info(f"hp result cached at {os.path.join(cache_dir, fname)}")
-            logging.info(f"params: {params}")
-            logging.info(f"result: {result}")
         return -testing_loss
     else:
         training_predictions = reg.predict(training_features)
@@ -128,6 +126,24 @@ def train_evaluate(
         )
 
         return results
+
+
+def initialize_optimizer(
+    optimizer: BayesianOptimization, cache_dir: str
+) -> Tuple[BayesianOptimization, int]:
+    cached_files = os.listdir(cache_dir)
+    hp_run_files = [
+        os.path.join(cache_dir, f) 
+        for f in cached_files if f.startswith("hyperparam_test_")
+    ]
+    for hp_run in hp_run_files:
+        with open(hp_run, "rb") as a:
+            hp_run_result = pickle.load(a)
+        logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
+        optimizer = optimizer.register(
+            hp_run_result["params"], hp_run_result["testing_loss"]
+        )
+    return optimizer, len(hp_run_files)
 
 
 def leave_one_out_CV(
@@ -195,10 +211,26 @@ def leave_one_out_CV(
         )
 
         logging.info("Optimizing hyperparameters")
+        init_points = 3
+        n_iter = 3
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer.maximize(init_points=3, n_iter=3)
+        optimizer, n_prior_runs = initialize_optimizer(optimizer, cache_dir)
+        logging.info(f"Initialized with {n_prior_runs} prior runs")
+
+        init_points -= n_prior_runs
+        if init_points < 0:
+            n_iter += init_points
+            init_points = max(0, init_points)
+            n_iter = max(0, n_iter)
+        if n_iter < 0:
+            raise Exception("n_iter must be greater than 0")
+
+        logging.info(
+            f"Hyperparameter optimization running with {init_points} initialization points for {n_iter} iterations"
+        )
+        optimizer.maximize(init_points=init_points, n_iter=n_iter)
 
         logging.info(
             "Optimization complete, extracting metrics for best hyperparameter \
