@@ -1,11 +1,13 @@
 import pickle
 import os
 import logging
+from typing import Tuple
 from uuid import uuid4
 import warnings
 from functools import partial
 
 import numpy as np
+import torch
 from numpy import sort, array_equal
 from sklearn.linear_model import ElasticNet
 from sklearn.exceptions import ConvergenceWarning
@@ -84,7 +86,7 @@ def train_evaluate(
         if cache_dir is not None:
             params = {"alpha": alpha, "l1_ratio": l1_ratio}
             result = {"testing_loss": -testing_loss, "params": params}
-            fname = str(uuid4()) + ".pkl"
+            fname = f"hyperparam_test_{uuid4()}.pkl"
             with open(os.path.join(cache_dir, fname), "wb") as a:
                 pickle.dump(result, a)
         return -testing_loss
@@ -127,6 +129,23 @@ def train_evaluate(
         return results
 
 
+def initialize_optimizer(
+    optimizer: BayesianOptimization, cache_dir: str
+) -> Tuple[BayesianOptimization, int]:
+    cached_files = os.listdir(cache_dir)
+    hp_run_files = [
+        os.path.join(cache_dir, f)
+        for f in cached_files
+        if f.startswith("hyperparam_test_")
+    ]
+    for hp_run in hp_run_files:
+        with open(hp_run, "rb") as a:
+            hp_run_result = pickle.load(a)
+        logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
+        optimizer.register(hp_run_result["params"], hp_run_result["testing_loss"])
+    return optimizer, len(hp_run_files)
+
+
 def leave_one_out_CV(
     training_data,
     testing_data,
@@ -160,6 +179,10 @@ def leave_one_out_CV(
 
     results_dict = {}
     for left_out_clade in clade_groups:
+        cache_dir = os.path.join(cache_dir, f"left_out_clade_{left_out_clade}")
+        if not os.path.isdir(cache_dir):
+            os.makedirs(cache_dir)
+
         logging.info(f"Formatting data for model with clade {left_out_clade} left out")
         input_data = train_test_validate_split(
             training_data,
@@ -167,7 +190,7 @@ def leave_one_out_CV(
             training_metadata,
             testing_metadata,
             left_out_clade,
-            torch_or_numpy="numpy",
+            torch_or_numpy="torch",
         )
 
         (
@@ -192,21 +215,38 @@ def leave_one_out_CV(
         )
 
         logging.info("Optimizing hyperparameters")
+        init_points = 3
+        n_iter = 3
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer.maximize(init_points=3, n_iter=3)
+        optimizer, n_prior_runs = initialize_optimizer(optimizer, cache_dir)
+        logging.info(f"Initialized with {n_prior_runs} prior runs")
 
-        logging.info(
-            "Optimization complete, extracting metrics for best hyperparameter \
-        combination"
-        )
-        results_dict[str(left_out_clade)] = train_evaluate(
-            *input_data,
-            adj,
-            optimizer.max["params"]["alpha"],
-            optimizer.max["params"]["l1_ratio"],
-        )
+        init_points -= n_prior_runs
+        if init_points < 0:
+            n_iter += init_points
+            init_points = max(0, init_points)
+            n_iter = max(0, n_iter)
+
+        if n_iter > 0:
+            logging.info(
+                f"Hyperparameter optimization running with {init_points} initialization points for {n_iter} iterations"
+            )
+            optimizer.maximize(init_points=init_points, n_iter=n_iter)
+        elif n_iter == 0:
+            logging.info(
+                "Optimization complete, extracting metrics for best hyperparameter \
+            combination"
+            )
+            results_dict[str(left_out_clade)] = train_evaluate(
+                *input_data,
+                adj,
+                optimizer.max["params"]["alpha"],
+                optimizer.max["params"]["l1_ratio"],
+            )
+        else:
+            raise Exception("n_iter must be greater than -1")
 
         if cache_dir is not None:
             fname = f"results_left_out_clade_{left_out_clade}.pkl"
@@ -246,6 +286,11 @@ def main(
         if convolve:
             results_dir = os.path.join(results_dir, "convolved")
 
+        if cache_dir is not None:
+            cache_dir = os.path.join(cache_dir, outcome)
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+
         if results_dir.endswith("/"):
             results_dir = results_dir[:-1]
         results_dir += results_dir_suffix
@@ -256,8 +301,8 @@ def main(
 
         # fitting elastic net is more efficient with fortran contigous array
         # https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html#sklearn.linear_model.ElasticNet.fit
-        training_data = [np.array(i, order="F") for i in training_data]
-        testing_data = [np.array(i, order="F") for i in testing_data]
+        training_data = [torch.Tensor(np.array(i, order="F")) for i in training_data]
+        testing_data = [torch.Tensor(np.array(i, order="F")) for i in testing_data]
 
         if convolve:
             adj = load_adjacency_matrix(data_dir)
@@ -280,8 +325,14 @@ def main(
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
-    root_dir = "data/euscape/model_inputs/"
-    species = "kleb"
-    cache_dir = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/linear_model/cache/kleb_elastic_net"
-    skip_clade_groups = [[1]]  # type:ignore
-    main(species, root_dir, cache_dir=cache_dir, skip_clade_groups=skip_clade_groups)
+    root_dir = "data/gonno/model_inputs/unfiltered"
+    species = "gonno"
+    cache_dir = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/linear_model/cache/gonno_convolved_elastic_net"
+    skip_clade_groups = []  # type:ignore
+    main(
+        species,
+        root_dir,
+        convolve=True,
+        cache_dir=cache_dir,
+        skip_clade_groups=skip_clade_groups,
+    )
