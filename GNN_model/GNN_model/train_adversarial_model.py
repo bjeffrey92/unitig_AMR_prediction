@@ -11,7 +11,6 @@ import torch.optim as optim
 from GNN_model.utils import (
     load_training_data,
     load_testing_data,
-    load_adjacency_matrix,
     load_labels_2,
     write_epoch_results,
     DataGenerator,
@@ -20,14 +19,13 @@ from GNN_model.utils import (
     country_accuracy,
     MetricAccumulator,
 )
-from GNN_model.adversarial_model import MICPredictor, Adversary
+from GNN_model.adversarial_model import Adversary, MICPredictor
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
 
 
 def load_data(data_dir, countries=True, families=False):
-    adj = load_adjacency_matrix(data_dir, degree_normalised=False)
     training_features, training_labels = load_training_data(data_dir)
     testing_features, testing_labels = load_testing_data(data_dir)
     training_labels_2, testing_labels_2 = load_labels_2(data_dir, countries, families)
@@ -38,17 +36,17 @@ def load_data(data_dir, countries=True, families=False):
     training_data = DataGenerator(training_features, training_labels, training_labels_2)
     testing_data = DataGenerator(testing_features, testing_labels, testing_labels_2)
 
-    return training_data, testing_data, adj
+    return training_data, testing_data
 
 
-def epoch_(predictor, data, adj, adversary=None):
+def epoch_(predictor, data, adversary=None):
     data.reset_generator()
 
     pred_outputs = [None] * data.n_samples
     adv_outputs = [None] * data.n_samples
     for i in range(data.n_samples):
         x = data.next_sample()[0]
-        y, y_hat = predictor(x, adj)
+        y, y_hat = predictor(x)
         pred_outputs[i] = y.unsqueeze(0)
         if adversary is None:
             continue
@@ -62,7 +60,7 @@ def epoch_(predictor, data, adj, adversary=None):
 
 
 def pre_train_predictor(
-    predictor, pred_optimizer, pred_loss, training_data, adj, epoch, testing_data=None
+    predictor, pred_optimizer, pred_loss, training_data, epoch, testing_data=None
 ):
     t = time.time()
     predictor.train()
@@ -71,13 +69,13 @@ def pre_train_predictor(
     training_data.reset_generator()
     training_data.shuffle_samples()
 
-    pred_outputs = epoch_(predictor, training_data, adj)
+    pred_outputs = epoch_(predictor, training_data)
 
     loss_train = pred_loss(pred_outputs, training_data.labels)
     acc_train = accuracy(pred_outputs, training_data.labels)
 
     if testing_data:
-        loss_test, acc_test = test(testing_data, adj, pred_loss, accuracy, predictor)
+        loss_test, acc_test = test(testing_data, pred_loss, accuracy, predictor)
     else:
         loss_test = "N/A"
         acc_test = "N/A"
@@ -105,7 +103,6 @@ def pre_train_adversary(
     adv_optimizer,
     adv_loss,
     training_data,
-    adj,
     epoch,
     testing_data=None,
 ):
@@ -118,14 +115,14 @@ def pre_train_adversary(
     training_data.reset_generator()
     training_data.shuffle_samples()
 
-    adv_outputs = epoch_(predictor, training_data, adj, adversary)[1]
+    adv_outputs = epoch_(predictor, training_data, adversary)[1]
 
     loss_train = adv_loss(adv_outputs, training_data.labels_2)
     acc_train = country_accuracy(adv_outputs, training_data.labels_2)
 
     if testing_data:
         loss_test, acc_test = test(
-            testing_data, adj, adv_loss, country_accuracy, predictor, adversary
+            testing_data, adv_loss, country_accuracy, predictor, adversary
         )
     else:
         loss_test = "N/A"
@@ -175,7 +172,7 @@ def adversarial_training(
         param.requires_grad = True
     for param in adversary.parameters():
         param.requires_grad = False
-    pred_outputs, adv_outputs = epoch_(predictor, training_data, adj, adversary)
+    pred_outputs, adv_outputs = epoch_(predictor, training_data, adversary)
 
     loss_adversary = adv_loss(adv_outputs, training_data.labels_2)
     loss_pred = pred_loss(pred_outputs, training_data.labels)
@@ -190,7 +187,7 @@ def adversarial_training(
         param.requires_grad = False
     for param in adversary.parameters():
         param.requires_grad = True
-    pred_outputs, adv_outputs = epoch_(predictor, training_data, adj, adversary)
+    pred_outputs, adv_outputs = epoch_(predictor, training_data, adversary)
 
     loss_adversary = adv_loss(adv_outputs, training_data.labels_2)
     loss_adversary.backward()
@@ -226,17 +223,17 @@ def adversarial_training(
     return predictor, adversary, (loss_train, acc_train, loss_test, acc_test)
 
 
-def test(data, adj, loss_function, accuracy, predictor, adversary=None):
+def test(data, loss_function, accuracy, predictor, adversary=None):
     data.reset_generator()
     predictor.train(False)
 
     if adversary is not None:
         adversary.train(False)
-        output = epoch_(predictor, data, adj, adversary)
+        output = epoch_(predictor, data, adversary)
         loss = float(loss_function(output[1], data.labels_2))
         acc = accuracy(output[1], data.labels_2)
     else:
-        output = epoch_(predictor, data, adj, adversary)
+        output = epoch_(predictor, data, adversary)
         loss = float(loss_function(output, data.labels))
         acc = accuracy(output, data.labels)
 
@@ -246,9 +243,10 @@ def test(data, adj, loss_function, accuracy, predictor, adversary=None):
 def main(Ab: str):
     data_dir = os.path.join(root_dir, Ab)
 
-    training_data, testing_data, adj = load_data(
-        data_dir, countries=False, families=True
-    )
+    (
+        training_data,
+        testing_data,
+    ) = load_data(data_dir, countries=False, families=True)
 
     predictor = MICPredictor(
         n_feat=training_data.n_nodes, n_hid_1=50, n_hid_2=50, out_dim=1, dropout=0.3
@@ -257,6 +255,7 @@ def main(Ab: str):
         n_feat=50,
         n_hid_1=50,
         n_hid_2=50,
+        dropout=0.3,
         out_dim=max(training_data.labels_2.tolist()) + 1,
     )
 
@@ -276,7 +275,6 @@ def main(Ab: str):
             pred_optimizer,
             pred_loss,
             training_data,
-            adj,
             epoch,
             testing_data,
         )
@@ -298,7 +296,6 @@ def main(Ab: str):
             adv_optimizer,
             adv_loss,
             training_data,
-            adj,
             epoch,
             testing_data,
         )
@@ -340,7 +337,6 @@ def main(Ab: str):
             pred_optimizer,
             pred_loss,
             training_data,
-            adj,
             epoch,
             adversary,
             adv_loss,
