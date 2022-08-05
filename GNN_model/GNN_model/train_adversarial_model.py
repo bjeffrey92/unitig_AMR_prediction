@@ -20,6 +20,7 @@ from GNN_model.utils import (
     MetricAccumulator,
 )
 from GNN_model.adversarial_model import Adversary, MICPredictor
+from tqdm import tqdm
 
 logging.basicConfig()
 logging.root.setLevel(logging.INFO)
@@ -44,7 +45,7 @@ def epoch_(predictor, data, adversary=None):
 
     pred_outputs = [None] * data.n_samples
     adv_outputs = [None] * data.n_samples
-    for i in range(data.n_samples):
+    for i in tqdm(range(data.n_samples), desc="Epoch"):
         x = data.next_sample()[0]
         y, y_hat = predictor(x)
         pred_outputs[i] = y.unsqueeze(0)
@@ -70,6 +71,7 @@ def pre_train_predictor(
     training_data.shuffle_samples()
 
     pred_outputs = epoch_(predictor, training_data)
+    print(pred_outputs, pred_outputs.var())
 
     loss_train = pred_loss(pred_outputs, training_data.labels)
     acc_train = accuracy(pred_outputs, training_data.labels)
@@ -249,19 +251,21 @@ def main(Ab: str):
     ) = load_data(data_dir, countries=False, families=True)
 
     predictor = MICPredictor(
-        n_feat=training_data.n_nodes, n_hid_1=50, n_hid_2=50, out_dim=1, dropout=0.3
+        n_feat=training_data.n_nodes, n_hid_1=100, n_hid_2=100, out_dim=1, dropout=0.3
     )
+    predictor.initialise_weights_and_biases(0)
     adversary = Adversary(
-        n_feat=50,
+        n_feat=100,
         n_hid_1=50,
         n_hid_2=50,
         dropout=0.3,
         out_dim=max(training_data.labels_2.tolist()) + 1,
     )
+    adversary.initialise_weights_and_biases(0)
 
-    pred_optimizer = optim.Adam(predictor.parameters(), lr=0.0001, weight_decay=5e-3)
+    pred_optimizer = optim.Adam(predictor.parameters(), lr=0.001, weight_decay=5e-3)
     pred_loss = logcosh
-    adv_optimizer = optim.Adam(adversary.parameters(), lr=0.0001, weight_decay=5e-4)
+    adv_optimizer = optim.Adam(adversary.parameters(), lr=0.001, weight_decay=5e-3)
     adv_loss = nn.CrossEntropyLoss()
 
     # pretraining predictor

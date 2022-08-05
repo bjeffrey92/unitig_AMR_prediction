@@ -41,12 +41,8 @@ def load_testing_data(data_dir, k=None, to_dense=True):
 
 @lru_cache(maxsize=1)
 def load_metadata(data_dir):
-    training_metadata = pd.read_csv(
-        os.path.join(data_dir, "training_metadata.csv")
-    )
-    testing_metadata = pd.read_csv(
-        os.path.join(data_dir, "testing_metadata.csv")
-    )
+    training_metadata = pd.read_csv(os.path.join(data_dir, "training_metadata.csv"))
+    testing_metadata = pd.read_csv(os.path.join(data_dir, "testing_metadata.csv"))
     return training_metadata, testing_metadata
 
 
@@ -54,9 +50,7 @@ def load_metadata(data_dir):
 def load_adjacency_matrix(data_dir, degree_normalised=True):
     if degree_normalised:
         adj = torch.load(
-            os.path.join(
-                data_dir, "degree_normalised_unitig_adjacency_tensor.pt"
-            )
+            os.path.join(data_dir, "degree_normalised_unitig_adjacency_tensor.pt")
         )
     else:
         adj = torch.load(os.path.join(data_dir, "unitig_adjacency_tensor.pt"))
@@ -78,9 +72,7 @@ def load_labels_2(data_dir, countries=True, families=False):
     else:
         name = "families"
 
-    training_labels_2 = torch.load(
-        os.path.join(data_dir, f"training_{name}.pt")
-    )
+    training_labels_2 = torch.load(os.path.join(data_dir, f"training_{name}.pt"))
     testing_labels_2 = torch.load(os.path.join(data_dir, f"testing_{name}.pt"))
 
     def transform(labels_2):
@@ -88,12 +80,8 @@ def load_labels_2(data_dir, countries=True, families=False):
         c_index = labels_2.index(max(labels_2))
         return torch.LongTensor([c_index])
 
-    training_labels_2 = torch.cat(
-        list(map(transform, training_labels_2.unbind(0)))
-    )
-    testing_labels_2 = torch.cat(
-        list(map(transform, testing_labels_2.unbind(0)))
-    )
+    training_labels_2 = torch.cat(list(map(transform, training_labels_2.unbind(0))))
+    testing_labels_2 = torch.cat(list(map(transform, testing_labels_2.unbind(0))))
     return training_labels_2, testing_labels_2
 
 
@@ -262,9 +250,7 @@ class DataGenerator:
         l = [None] * len(features)
         for i in range(len(features)):
             if global_node:
-                l[i] = torch.cat((features[i], torch.Tensor([0.5]))).unsqueeze(
-                    1
-                )
+                l[i] = torch.cat((features[i], torch.Tensor([0.5]))).unsqueeze(1)
             else:
                 l[i] = features[i].unsqueeze(1)
         return l
@@ -284,9 +270,9 @@ class DataGenerator:
             yield sample
         else:
             if self.labels_2 is not None:
-                yield self.features[self.n - 1], self.labels[
+                yield self.features[self.n - 1], self.labels[self.n - 1], self.labels_2[
                     self.n - 1
-                ], self.labels_2[self.n - 1]
+                ]
             else:
                 yield self.features[self.n - 1], self.labels[self.n - 1]
 
@@ -301,9 +287,7 @@ class DataGenerator:
         self.labels = torch.as_tensor(
             list({i: self.labels[i] for i in self._index}.values())
         )
-        self.features = list(
-            {i: self.features[i] for i in self._index}.values()
-        )
+        self.features = list({i: self.features[i] for i in self._index}.values())
         if self.labels_2 is not None:
             self.labels_2 = torch.as_tensor(
                 list({i: self.labels_2[i] for i in self._index}.values())
@@ -316,14 +300,14 @@ class MetricAccumulator:
         self.training_data_acc = []
         self.testing_data_loss = []
         self.testing_data_acc = []
-        self.validation_data_loss = []
-        self.validation_data_acc = []
+        # self.validation_data_loss = []
+        # self.validation_data_acc = []
         self.training_data_loss_grads = []
         self.training_data_acc_grads = []
         self.testing_data_loss_grads = []
         self.testing_data_acc_grads = []
-        self.validation_data_loss_grads = []
-        self.validation_data_acc_grads = []
+        # self.validation_data_loss_grads = []
+        # self.validation_data_acc_grads = []
         self.gradient_batch = gradient_batch
 
     def add(self, epoch_results):
@@ -331,8 +315,8 @@ class MetricAccumulator:
         self.training_data_acc.append(epoch_results[1])
         self.testing_data_loss.append(epoch_results[2])
         self.testing_data_acc.append(epoch_results[3])
-        self.validation_data_loss.append(epoch_results[4])
-        self.validation_data_acc.append(epoch_results[5])
+        # self.validation_data_loss.append(epoch_results[4])
+        # self.validation_data_acc.append(epoch_results[5])
         self._all_grads()
 
     def _all_grads(self):
@@ -345,15 +329,13 @@ class MetricAccumulator:
         self.testing_data_loss_grads.append(
             self.metric_gradient(self.testing_data_loss)
         )
-        self.testing_data_acc_grads.append(
-            self.metric_gradient(self.testing_data_acc)
-        )
-        self.validation_data_loss_grads.append(
-            self.metric_gradient(self.validation_data_loss)
-        )
-        self.validation_data_acc_grads.append(
-            self.metric_gradient(self.validation_data_acc)
-        )
+        self.testing_data_acc_grads.append(self.metric_gradient(self.testing_data_acc))
+        # self.validation_data_loss_grads.append(
+        #     self.metric_gradient(self.validation_data_loss)
+        # )
+        # self.validation_data_acc_grads.append(
+        #     self.metric_gradient(self.validation_data_acc)
+        # )
 
     def metric_gradient(self, x: list):
         batch = self.gradient_batch
@@ -371,8 +353,8 @@ class MetricAccumulator:
             self.avg_gradient(self.training_data_acc_grads),
             self.avg_gradient(self.testing_data_loss_grads),
             self.avg_gradient(self.testing_data_acc_grads),
-            self.avg_gradient(self.validation_data_loss_grads),
-            self.avg_gradient(self.validation_data_acc_grads),
+            # self.avg_gradient(self.validation_data_loss_grads),
+            # self.avg_gradient(self.validation_data_acc_grads),
         ]
         last_epoch = max(0, epoch - self.gradient_batch)
         logging.info(
@@ -380,10 +362,10 @@ class MetricAccumulator:
             Training Data Loss Gradient = {avg_grads[0]}\n \
             Training Data Accuracy Gradient = {avg_grads[1]}\n \
             Testing Data Loss Gradient = {avg_grads[2]}\n \
-            Testing Data Accuracy Gradient = {avg_grads[3]}\n \
-            Validation Data Loss Gradient = {avg_grads[4]}\n \
-            Validation Data Accuracy Gradient = {avg_grads[5]}\n"
+            Testing Data Accuracy Gradient = {avg_grads[3]}\n"
         )
+        # Validation Data Loss Gradient = {avg_grads[4]}\n \
+        # Validation Data Accuracy Gradient = {avg_grads[5]}\n"
 
 
 # eucast resistance breakpoints for gonno
