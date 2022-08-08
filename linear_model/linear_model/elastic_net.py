@@ -1,6 +1,7 @@
 import pickle
 import os
 import logging
+import sys
 from typing import Tuple
 from uuid import uuid4
 import warnings
@@ -178,8 +179,9 @@ def leave_one_out_CV(
         clade_groups.remove(i)
 
     results_dict = {}
+    cache_dir_base = cache_dir
     for left_out_clade in clade_groups:
-        cache_dir = os.path.join(cache_dir, f"left_out_clade_{left_out_clade}")
+        cache_dir = os.path.join(cache_dir_base, f"left_out_clade_{left_out_clade}")
         if not os.path.isdir(cache_dir):
             os.makedirs(cache_dir)
 
@@ -234,6 +236,12 @@ def leave_one_out_CV(
                 f"Hyperparameter optimization running with {init_points} initialization points for {n_iter} iterations"
             )
             optimizer.maximize(init_points=init_points, n_iter=n_iter)
+            results_dict[str(left_out_clade)] = train_evaluate(
+                *input_data,
+                adj,
+                optimizer.max["params"]["alpha"],
+                optimizer.max["params"]["l1_ratio"],
+            )
         elif n_iter == 0:
             logging.info(
                 "Optimization complete, extracting metrics for best hyperparameter \
@@ -267,71 +275,72 @@ def save_output(results_dict, results_dir, outcome):
 def main(
     species,
     root_dir,
+    outcome,
     convolve=False,
     results_dir_suffix="",
     cache_dir=None,
     skip_clade_groups=[],
 ):
-    outcomes = os.listdir(root_dir)
-    for outcome in outcomes:
-        logging.info(f"Fitting models with {outcome}")
-        results_dir = (
-            f"linear_model/results/{species}elastic_net_results/cluster_wise_CV"
-        )
-        data_dir = os.path.join(root_dir, outcome)
-        # results_dir = (
-        #     "linear_model/results/elastic_net_results/gwas_filtered/"
-        #     + "cluster_wise_CV"
-        # )
-        if convolve:
-            results_dir = os.path.join(results_dir, "convolved")
+    logging.info(f"Fitting models with {outcome}")
+    results_dir = f"linear_model/results/{species}elastic_net_results/cluster_wise_CV"
+    data_dir = os.path.join(root_dir, outcome)
+    # results_dir = (
+    #     "linear_model/results/elastic_net_results/gwas_filtered/"
+    #     + "cluster_wise_CV"
+    # )
+    if convolve:
+        results_dir = os.path.join(results_dir, "convolved")
 
-        if cache_dir is not None:
-            cache_dir = os.path.join(cache_dir, outcome)
-            if not os.path.exists(cache_dir):
-                os.makedirs(cache_dir)
+    if cache_dir is not None:
+        cache_dir = os.path.join(cache_dir, outcome)
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
 
-        if results_dir.endswith("/"):
-            results_dir = results_dir[:-1]
-        results_dir += results_dir_suffix
+    if results_dir.endswith("/"):
+        results_dir = results_dir[:-1]
+    results_dir += results_dir_suffix
 
-        training_data = load_training_data(data_dir)
-        testing_data = load_testing_data(data_dir)
-        training_metadata, testing_metadata = load_metadata(data_dir)
+    training_data = load_training_data(data_dir)
+    testing_data = load_testing_data(data_dir)
+    training_metadata, testing_metadata = load_metadata(data_dir)
 
-        # fitting elastic net is more efficient with fortran contigous array
-        # https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html#sklearn.linear_model.ElasticNet.fit
-        training_data = [torch.Tensor(np.array(i, order="F")) for i in training_data]
-        testing_data = [torch.Tensor(np.array(i, order="F")) for i in testing_data]
+    # fitting elastic net is more efficient with fortran contigous array
+    # https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNet.html#sklearn.linear_model.ElasticNet.fit
+    training_data = [torch.Tensor(np.array(i, order="F")) for i in training_data]
+    testing_data = [torch.Tensor(np.array(i, order="F")) for i in testing_data]
 
-        if convolve:
-            adj = load_adjacency_matrix(data_dir)
-        else:
-            adj = None
+    if convolve:
+        adj = load_adjacency_matrix(data_dir)
+    else:
+        adj = None
 
-        results_dict = leave_one_out_CV(
-            training_data,
-            testing_data,
-            training_metadata,
-            testing_metadata,
-            adj=adj,
-            cache_dir=cache_dir,
-            skip_clade_groups=skip_clade_groups,
-        )
+    results_dict = leave_one_out_CV(
+        training_data,
+        testing_data,
+        training_metadata,
+        testing_metadata,
+        adj=adj,
+        cache_dir=cache_dir,
+        skip_clade_groups=skip_clade_groups,
+    )
 
-        save_output(results_dict, results_dir, outcome)
+    # save_output(results_dict, results_dir, outcome)
 
 
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
+    outcome = sys.argv[1]
+    skip_clade_groups = eval(sys.argv[2])
+    print(outcome, skip_clade_groups)
+
     root_dir = "data/gonno/model_inputs/unfiltered"
     species = "gonno"
     cache_dir = "/home/bj515/OneDrive/work_stuff/WGS_AMR_prediction/graph_learning/linear_model/cache/gonno_convolved_elastic_net"
-    skip_clade_groups = []  # type:ignore
     main(
         species,
         root_dir,
+        outcome,
         convolve=True,
         cache_dir=cache_dir,
         skip_clade_groups=skip_clade_groups,
