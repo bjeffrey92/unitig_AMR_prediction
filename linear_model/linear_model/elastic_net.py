@@ -140,7 +140,7 @@ def initialize_optimizer(
         with open(hp_run, "rb") as a:
             hp_run_result = pickle.load(a)
         logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
-        optimizer = optimizer.register(
+        optimizer.register(
             hp_run_result["params"], hp_run_result["testing_loss"]
         )
     return optimizer, len(hp_run_files)

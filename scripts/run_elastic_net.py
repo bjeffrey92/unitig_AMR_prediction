@@ -1,10 +1,10 @@
 import pickle
 import os
 import logging
-from typing import Tuple
 from uuid import uuid4
 import warnings
 from functools import partial
+from typing import Tuple
 
 import numpy as np
 from numpy import sort, array_equal
@@ -140,7 +140,7 @@ def initialize_optimizer(
         with open(hp_run, "rb") as a:
             hp_run_result = pickle.load(a)
         logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
-        optimizer = optimizer.register(
+        optimizer.register(
             hp_run_result["params"], hp_run_result["testing_loss"]
         )
     return optimizer, len(hp_run_files)
@@ -179,6 +179,10 @@ def leave_one_out_CV(
 
     results_dict = {}
     for left_out_clade in clade_groups:
+        cache_dir = os.path.join(cache_dir, f"left_out_clade_{left_out_clade}")
+        if not os.path.isdir(cache_dir):
+            os.makedirs(cache_dir)
+
         logging.info(f"Formatting data for model with clade {left_out_clade} left out")
         input_data = train_test_validate_split(
             training_data,
@@ -196,7 +200,7 @@ def leave_one_out_CV(
             testing_labels,
         ) = input_data[:4]
 
-        pbounds = {"alpha": (0.01, 0.1), "l1_ratio": (0.3, 0.7)}
+        pbounds = {"alpha": (0.03, 0.1), "l1_ratio": (0.3, 0.7)}
 
         partial_fitting_function = partial(
             train_evaluate,
@@ -216,32 +220,40 @@ def leave_one_out_CV(
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        optimizer, n_prior_runs = initialize_optimizer(optimizer, cache_dir)
-        logging.info(f"Initialized with {n_prior_runs} prior runs")
+        if cache_dir is not None:
+            optimizer, n_prior_runs = initialize_optimizer(optimizer, cache_dir)
+            logging.info(f"Initialized with {n_prior_runs} prior runs")
 
-        init_points -= n_prior_runs
-        if init_points < 0:
-            n_iter += init_points
-            init_points = max(0, init_points)
-            n_iter = max(0, n_iter)
+            init_points -= n_prior_runs
+            if init_points < 0:
+                n_iter += init_points
+                init_points = max(0, init_points)
+                n_iter = max(0, n_iter)
+
         if n_iter < 0:
             raise Exception("n_iter must be greater than 0")
-
-        logging.info(
-            f"Hyperparameter optimization running with {init_points} initialization points for {n_iter} iterations"
-        )
-        optimizer.maximize(init_points=init_points, n_iter=n_iter)
-
-        logging.info(
-            "Optimization complete, extracting metrics for best hyperparameter \
-        combination"
-        )
-        results_dict[str(left_out_clade)] = train_evaluate(
-            *input_data,
-            adj,
-            optimizer.max["params"]["alpha"],
-            optimizer.max["params"]["l1_ratio"],
-        )
+        elif n_iter > 0:
+            logging.info(
+                f"Hyperparameter optimization running with {init_points} initialization points for {n_iter} iterations"
+            )
+            optimizer.maximize(init_points=init_points, n_iter=n_iter)
+            results_dict[str(left_out_clade)] = train_evaluate(
+                *input_data,
+                adj,
+                optimizer.max["params"]["alpha"],
+                optimizer.max["params"]["l1_ratio"],
+            )
+        elif n_iter == 0:
+            logging.info(
+                "Optimization complete, extracting metrics for best hyperparameter \
+            combination"
+            )
+            results_dict[str(left_out_clade)] = train_evaluate(
+                *input_data,
+                adj,
+                optimizer.max["params"]["alpha"],
+                optimizer.max["params"]["l1_ratio"],
+            )
 
         if cache_dir is not None:
             fname = f"results_left_out_clade_{left_out_clade}.pkl"
@@ -318,5 +330,5 @@ if __name__ == "__main__":
     root_dir = "unitig_AMR_prediction/data/euscape/model_inputs/"
     species = "kleb"
     cache_dir = "unitig_AMR_prediction/linear_model/cache/kleb_elastic_net"
-    skip_clade_groups = [[1]]  # type:ignore
+    skip_clade_groups = [[1], [2]]  # type:ignore
     main(species, root_dir, cache_dir=cache_dir, skip_clade_groups=skip_clade_groups)

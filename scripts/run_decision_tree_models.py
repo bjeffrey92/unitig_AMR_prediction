@@ -2,12 +2,14 @@ import pickle
 import os
 import logging
 import sys
-from typing import Dict
+from typing import Dict, Optional, Tuple
 from functools import partial
+from uuid import uuid4
 
 import numpy as np
 from bayes_opt import BayesianOptimization
 from sklearn.metrics import mean_squared_error
+
 # from skranger.ensemble import RangerForestRegressor
 # from xgboost import XGBRegressor
 
@@ -84,6 +86,7 @@ def train_evaluate(
     adj: bool,
     model_type: str,
     convolve_features: bool = False,
+    cache_dir=None,
     **kwargs,
 ):
 
@@ -93,7 +96,6 @@ def train_evaluate(
         if validation_features is not None:
             validation_features = convolve(validation_features, adj)
 
-    # keep as tensor so can be cached (needs to be hashable)
     training_features = np.array(training_features)
     training_labels = np.array(training_labels)
     testing_features = np.array(testing_features)
@@ -102,6 +104,7 @@ def train_evaluate(
         validation_features = np.array(validation_features)
         validation_labels = np.array(validation_labels)
 
+    logging.info(kwargs)
     if model_type == "random_forest":
         reg = fit_rf(training_features, training_labels, **kwargs)
     elif model_type == "xgboost":
@@ -116,6 +119,12 @@ def train_evaluate(
     if validation_features is None:
         testing_predictions = reg.predict(testing_features)
         testing_loss = float(mean_squared_error(testing_labels, testing_predictions))
+        if cache_dir is not None:
+            params = kwargs
+            result = {"testing_loss": -testing_loss, "params": params}
+            fname = f"hyperparam_test_{uuid4()}.pkl"
+            with open(os.path.join(cache_dir, fname), "wb") as a:
+                pickle.dump(result, a)
         return -testing_loss
     else:
         training_predictions = reg.predict(training_features)
@@ -150,10 +159,28 @@ def train_evaluate(
             validation_predictions=validation_predictions,
             hyperparameters=kwargs,
             model_type=model_type,
-            model=reg,
+            model=None,
         )
 
         return results
+
+
+def initialize_optimizer(
+    optimizer: BayesianOptimization, cache_dir: str
+) -> Tuple[BayesianOptimization, int]:
+    cached_files = os.listdir(cache_dir)
+    hp_run_files = [
+        os.path.join(cache_dir, f) 
+        for f in cached_files if f.startswith("hyperparam_test_")
+    ]
+    for hp_run in hp_run_files:
+        with open(hp_run, "rb") as a:
+            hp_run_result = pickle.load(a)
+        logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
+        optimizer.register(
+            hp_run_result["params"], hp_run_result["testing_loss"]
+        )
+    return optimizer, len(hp_run_files)
 
 
 def leave_one_out_CV(
@@ -165,6 +192,7 @@ def leave_one_out_CV(
     adj: str = None,
     convolve_features: bool = False,
     n_splits: int = 12,
+    cache_dir: Optional[str] = None,
 ) -> Dict:
     try:
         clades = np.sort(training_metadata.clusters.unique())
@@ -185,7 +213,14 @@ def leave_one_out_CV(
     clade_groups = [i for i in clade_groups if len(i) > 0]
 
     results_dict = {}
+    base_cache_dir = cache_dir
     for left_out_clade in clade_groups:
+        cache_dir = os.path.join(
+            base_cache_dir, f"{model_type}/left_out_clade_{left_out_clade}"
+        )
+        if not os.path.isdir(cache_dir):
+            os.makedirs(cache_dir)
+
         logging.info(f"Formatting data for model with clades {left_out_clade} left out")
         input_data = train_test_validate_split(
             training_data,
@@ -244,29 +279,52 @@ def leave_one_out_CV(
             adj=adj,
             model_type=model_type,
             convolve_features=convolve_features,
+            cache_dir=cache_dir,
         )
 
         logging.info("Optimizing hyperparameters")
         optimizer = BayesianOptimization(
             f=partial_fitting_function, pbounds=pbounds, random_state=1
         )
-        if model_type == "random_forest":
-            optimizer.maximize(init_points=5, n_iter=5)
-        elif model_type == "xgboost":
-            optimizer.maximize(init_points=10, n_iter=20)
-        elif model_type in ["graph_rf", "julia_rf"]:
-            optimizer.maximize(init_points=8, n_iter=15)
-        else:
-            raise ValueError(f"Unknown model type {model_type}")
+        init_points=8
+        n_iter=15
+        if cache_dir is not None:
+            optimizer, n_prior_runs = initialize_optimizer(optimizer, cache_dir)
+            logging.info(f"Initialized with {n_prior_runs} prior runs")
+            init_points -= n_prior_runs
+            if init_points < 0:
+                n_iter += init_points
+                init_points = max(0, init_points)
+                n_iter = max(0, n_iter)
 
-        logging.info(
-            "Optimization complete, extracting metrics for best hyperparameter \
-        combination"
-        )
-        results_dict[str(left_out_clade)] = train_evaluate(
-            *(list(input_data) + [adj, model_type]),
-            **optimizer.max["params"],
-        )
+        if n_iter < 0:
+            raise Exception("n_iter must be greater than 0")
+        elif n_iter > 0:
+            optimizer.maximize(init_points=init_points, n_iter=n_iter)
+
+            logging.info(
+                "Optimization complete, extracting metrics for best hyperparameter \
+            combination"
+            )
+            results_dict[str(left_out_clade)] = train_evaluate(
+                *(list(input_data) + [adj, model_type]),
+                **optimizer.max["params"],
+            )
+        elif n_iter == 0:
+            logging.info(
+                "Optimization complete, extracting metrics for best hyperparameter \
+            combination"
+            )
+            results_dict[str(left_out_clade)] = train_evaluate(
+                *(list(input_data) + [adj, model_type]),
+                **optimizer.max["params"],
+            )
+
+        if cache_dir is not None:
+            fname = f"results_left_out_clade_{left_out_clade}.pkl"
+            with open(os.path.join(cache_dir, fname), "wb") as a:
+                pickle.dump(results_dict[str(left_out_clade)], a)
+
 
     return results_dict
 
@@ -299,6 +357,7 @@ def main(
     convolve: bool = False,
     gwas_filtered: bool = False,
     results_dir_suffix: str = "",
+    cache_dir=None,
 ):
     logging.info(f"Fitting models with {outcome}")
     data_dir = os.path.join(root_dir, outcome)
@@ -343,6 +402,7 @@ def main(
         model_type,
         adj,
         convolve_features=convolve,
+        cache_dir=cache_dir,
     )
 
     save_output(results_dict, results_dir, outcome, model_type)
@@ -356,5 +416,6 @@ if __name__ == "__main__":
     species = "kleb"
     model_type = sys.argv[1]
     outcomes = os.listdir(root_dir)
+    cache_dir = "unitig_AMR_prediction/decision_tree_models/cache"
     for outcome in outcomes:
-        main(outcome, root_dir, species, model_type=model_type)
+        main(outcome, root_dir, species, model_type=model_type, cache_dir=cache_dir)
