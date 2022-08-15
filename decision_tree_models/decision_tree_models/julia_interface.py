@@ -3,7 +3,7 @@ from os import environ
 from multiprocessing import cpu_count
 
 # needs to be set before starting julia
-environ["JULIA_NUM_THREADS"] = str(cpu_count())
+environ["JULIA_NUM_THREADS"] = "25"
 
 from julia.api import Julia
 
