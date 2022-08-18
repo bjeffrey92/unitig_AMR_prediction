@@ -42,7 +42,7 @@ def convert_to_dataframe_lasso(CV_results):
     return pd.DataFrame(df_dictionary)
 
 
-def convert_to_dataframe(CV_results):
+def convert_to_dataframe(CV_results, SVR_data=False):
     df_dictionary = {
         "left_out_clade": [],
         "training_accuracy": [],
@@ -52,15 +52,26 @@ def convert_to_dataframe(CV_results):
     for left_out_clade, d in CV_results.items():
         df_dictionary["left_out_clade"].append(left_out_clade)
         if isinstance(d, Dict):
-            df_dictionary["training_accuracy"].append(
-                d["accuracies"][0]["training_accuracy"]
-            )
-            df_dictionary["testing_accuracy"].append(
-                d["accuracies"][0]["testing_accuracy"]
-            )
-            df_dictionary["validation_accuracy"].append(
-                d["accuracies"][0]["validation_accuracy"]
-            )
+            if SVR_data:
+                df_dictionary["training_accuracy"].append(
+                    d["accuracies"]["training_accuracy"]
+                )
+                df_dictionary["testing_accuracy"].append(
+                    d["accuracies"]["testing_accuracy"]
+                )
+                df_dictionary["validation_accuracy"].append(
+                    d["accuracies"]["validation_accuracy"]
+                )
+            else:
+                df_dictionary["training_accuracy"].append(
+                    d["accuracies"][0]["training_accuracy"]
+                )
+                df_dictionary["testing_accuracy"].append(
+                    d["accuracies"][0]["testing_accuracy"]
+                )
+                df_dictionary["validation_accuracy"].append(
+                    d["accuracies"][0]["validation_accuracy"]
+                )
         else:
             df_dictionary["training_accuracy"].append(d.training_accuracy)
             df_dictionary["testing_accuracy"].append(d.testing_accuracy)
@@ -193,6 +204,15 @@ def bar_plot_of_results(data, filename):
     fig.savefig(filename)
 
 
+def rename_test_and_validate(df: pd.DataFrame) -> pd.DataFrame:
+    return df.rename(
+        columns={
+            "validation_accuracy": "testing_accuracy",
+            "testing_accuracy": "validation_accuracy",
+        }
+    )
+
+
 def box_plot_of_results(data, filename):
     fig, axs = plt.subplots(1, 4, sharey=True)
     n = 0
@@ -206,7 +226,7 @@ def box_plot_of_results(data, filename):
             },
             inplace=True,
         )
-        df = df[["Train", "Test", "Validate"]]
+        df = df[["Train", "Validate", "Test"]]
         axs[n].boxplot(df, notch=False, labels=df.columns)
         axs[n].set_title(Ab.upper().split("_")[1])
         axs[n].set(ylim=(0, 100))
@@ -238,5 +258,6 @@ if __name__ == "__main__":
     accuracy_data = {
         Ab: df.set_index("left_out_clade") for Ab, df in accuracy_data.items()
     }
+    accuracy_data = {k: rename_test_and_validate(v) for k, v in accuracy_data.items()}
 
     box_plot_of_results(accuracy_data, os.path.join(data_dir, "CV_accuracy.png"))
