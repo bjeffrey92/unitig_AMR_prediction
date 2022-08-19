@@ -3,6 +3,7 @@ import os
 import logging
 from uuid import uuid4
 import warnings
+import sys
 from functools import partial
 from typing import Tuple
 
@@ -11,6 +12,7 @@ from numpy import sort, array_equal
 from sklearn.linear_model import ElasticNet
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.metrics import mean_squared_error
+from torch import Tensor
 from bayes_opt import BayesianOptimization
 
 from linear_model.utils import (
@@ -21,8 +23,13 @@ from linear_model.utils import (
     train_test_validate_split,
     mean_acc_per_bin,
     ResultsContainer,
-    convolve,
+    convolve as convolve_,
 )
+
+
+def convolve(features: np.array, adj: Tensor) -> np.array:
+    convolved_tensor = convolve_(Tensor(features), adj)
+    return np.array(convolved_tensor)
 
 
 def fit_model(training_features, training_labels, alpha, l1_ratio):
@@ -133,16 +140,15 @@ def initialize_optimizer(
 ) -> Tuple[BayesianOptimization, int]:
     cached_files = os.listdir(cache_dir)
     hp_run_files = [
-        os.path.join(cache_dir, f) 
-        for f in cached_files if f.startswith("hyperparam_test_")
+        os.path.join(cache_dir, f)
+        for f in cached_files
+        if f.startswith("hyperparam_test_")
     ]
     for hp_run in hp_run_files:
         with open(hp_run, "rb") as a:
             hp_run_result = pickle.load(a)
         logging.info(f"Initializing Bayesian optimizer with {hp_run_result}")
-        optimizer.register(
-            hp_run_result["params"], hp_run_result["testing_loss"]
-        )
+        optimizer.register(hp_run_result["params"], hp_run_result["testing_loss"])
     return optimizer, len(hp_run_files)
 
 
@@ -327,8 +333,18 @@ def main(
 if __name__ == "__main__":
     logging.basicConfig()
     logging.root.setLevel(logging.INFO)
-    root_dir = "unitig_AMR_prediction/data/euscape/model_inputs/"
-    species = "kleb"
-    cache_dir = "unitig_AMR_prediction/linear_model/cache/kleb_elastic_net"
-    skip_clade_groups = [[1], [2]]  # type:ignore
-    main(species, root_dir, cache_dir=cache_dir, skip_clade_groups=skip_clade_groups)
+    # root_dir = "unitig_AMR_prediction/data/euscape/model_inputs/"
+    # species = "kleb"
+    # cache_dir = "unitig_AMR_prediction/linear_model/cache/kleb_elastic_net_convolved"
+    root_dir = sys.argv[1]
+    species = sys.argv[2]
+    cache_dir = sys.argv[3]
+
+    skip_clade_groups = []  # type:ignore
+    main(
+        species,
+        root_dir,
+        cache_dir=cache_dir,
+        skip_clade_groups=skip_clade_groups,
+        convolve=True,
+    )
